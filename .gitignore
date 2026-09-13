@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local data: raw payloads, SQLite database, downloaded tiles
+data/
+
+# Node / frontend build
+node_modules/
+web/dist/
+web/.vite/
+
+# Local config overrides
+.env
