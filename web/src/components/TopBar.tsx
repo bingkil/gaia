@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { RealtimeStatus } from "../api/realtime";
+import type { Basemap } from "../map/MapView";
 import type { Filters } from "../state/useGaiaData";
 
 interface Props {
@@ -12,8 +13,9 @@ interface Props {
   onPickMode: (on: boolean) => void;
   hasLocation: boolean;
   onUseMyLocation: () => void;
-  aerial: boolean;
-  onAerial: (on: boolean) => void;
+  basemap: Basemap;
+  onBasemap: (basemap: Basemap) => void;
+  imageryDate: string;
   onReload: () => void;
   onSettings: () => void;
 }
@@ -41,8 +43,9 @@ export function TopBar({
   onPickMode,
   hasLocation,
   onUseMyLocation,
-  aerial,
-  onAerial,
+  basemap,
+  onBasemap,
+  imageryDate,
   onReload,
   onSettings,
 }: Props): React.JSX.Element {
@@ -128,13 +131,22 @@ export function TopBar({
         Use my position
       </button>
       <button
-        className={`btn ${aerial ? "on" : ""}`}
-        onClick={() => onAerial(!aerial)}
+        className={`btn ${basemap === "aerial" ? "on" : ""}`}
+        onClick={() => onBasemap(basemap === "aerial" ? "dark" : "aerial")}
         type="button"
-        aria-pressed={aerial}
-        title="Swap the dark basemap for satellite imagery"
+        aria-pressed={basemap === "aerial"}
+        title="Sharp satellite imagery, but flown months or years ago"
       >
         Aerial
+      </button>
+      <button
+        className={`btn ${basemap === "live" ? "on" : ""}`}
+        onClick={() => onBasemap(basemap === "live" ? "dark" : "live")}
+        type="button"
+        aria-pressed={basemap === "live"}
+        title={`True colour from VIIRS NOAA-21 for ${imageryDate} UTC, flown that day. Coarse, but it shows smoke and ash rather than a cloudless mosaic.`}
+      >
+        Satellite
       </button>
 
       {unread > 0 ? <span className="tag">{unread} new</span> : null}

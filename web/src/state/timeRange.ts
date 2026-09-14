@@ -40,3 +40,13 @@ export function rangeSummary(range: TimeRange): string {
   if (range.kind === "rolling") return `last ${rollingLabel(range.hours)}`;
   return range.from === range.to ? range.from : `${range.from} to ${range.to}`;
 }
+
+/**
+ * The data day to show imagery for. Satellite days are UTC, so a picked day
+ * ahead of it would ask for imagery that has not been flown yet.
+ */
+export function imageryDate(range: TimeRange): string {
+  const utcToday = new Date().toISOString().slice(0, 10);
+  if (range.kind !== "day") return utcToday;
+  return range.to < utcToday ? range.to : utcToday;
+}

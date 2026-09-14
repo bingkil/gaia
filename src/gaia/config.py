@@ -7,12 +7,28 @@ from the environment.
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _default_data_dir() -> Path:
+    # A PyInstaller bundle's own directory is a temp extraction that can be
+    # wiped between runs, so a packaged build needs a real per-user location.
+    if not getattr(sys, "frozen", False):
+        return REPO_ROOT / "data"
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return base / "GAIA"
 
 
 class ProviderSettings(BaseModel):
@@ -117,7 +133,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    data_dir: Path = REPO_ROOT / "data"
+    data_dir: Path = Field(default_factory=_default_data_dir)
     host: str = "127.0.0.1"
     port: int = 8000
     # Retain events in the active map view for this long after origin time.

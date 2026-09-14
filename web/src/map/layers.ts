@@ -4,6 +4,7 @@ import type {
   GeoJSONSource,
   LayerSpecification,
   Map as MapLibreMap,
+  RasterTileSource,
 } from "maplibre-gl";
 
 export const SRC_EVENTS = "gaia-events";
@@ -11,10 +12,12 @@ export const SRC_FRAMES = "gaia-frames";
 export const SRC_WAVEFRONT = "gaia-wavefront";
 export const SRC_WATCH = "gaia-watch";
 export const SRC_AERIAL = "gaia-aerial";
+export const SRC_LIVE = "gaia-live";
 export const LAYER_EVENT_ICONS = "gaia-event-icons";
 export const LAYER_EVENT_HALO = "gaia-event-halo";
 export const LAYER_QUAKE_PULSE = "gaia-quake-pulse";
 export const LAYER_AERIAL = "gaia-aerial-raster";
+export const LAYER_LIVE = "gaia-live-raster";
 
 /** How long a quake keeps pulsing. By the end the ring has faded to nothing. */
 export const PULSE_WINDOW_SECONDS = 3600;
@@ -170,6 +173,48 @@ export function addAerial(map: MapLibreMap): void {
     },
     firstSymbol,
   );
+}
+
+/** Same VIIRS satellite the fire detections come from, so plume and marker agree. */
+const GIBS_LAYER = "VIIRS_NOAA21_CorrectedReflectance_TrueColor";
+
+function liveTiles(date: string): string[] {
+  return [
+    `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GIBS_LAYER}/default/${date}` +
+      "/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg",
+  ];
+}
+
+/**
+ * Daily true colour, published within 3.5 hours of the overpass. Coarse next to
+ * the Esri imagery, but it shows today's smoke rather than a cloudless mosaic
+ * from some past year. GIBS stops at zoom 9, so tiles are stretched past that.
+ */
+export function addLiveImagery(map: MapLibreMap, date: string): void {
+  if (map.getLayer(LAYER_LIVE)) return;
+  map.addSource(SRC_LIVE, {
+    type: "raster",
+    tiles: liveTiles(date),
+    tileSize: 256,
+    maxzoom: 9,
+    attribution: "Imagery &copy; NASA EOSDIS GIBS &mdash; VIIRS NOAA-21",
+  });
+  const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+  map.addLayer(
+    {
+      id: LAYER_LIVE,
+      type: "raster",
+      source: SRC_LIVE,
+      layout: { visibility: "none" },
+      paint: { "raster-brightness-max": 0.95, "raster-saturation": -0.08 },
+    },
+    firstSymbol,
+  );
+}
+
+export function setLiveImageryDate(map: MapLibreMap, date: string): void {
+  const source = map.getSource(SRC_LIVE) as RasterTileSource | undefined;
+  source?.setTiles(liveTiles(date));
 }
 
 /**

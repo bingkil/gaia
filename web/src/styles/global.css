@@ -539,6 +539,19 @@ input[type="range"] {
   padding: 9px 12px;
 }
 
+.imagery-age {
+  grid-area: map;
+  align-self: end;
+  justify-self: start;
+  margin: 0 0 34px 10px;
+  padding: 5px 10px;
+  font-size: 10px;
+  background: var(--solid-bg);
+  border: 1px solid var(--solid-border);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
 .scrub {
   display: flex;
   align-items: center;

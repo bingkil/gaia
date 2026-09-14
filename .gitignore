@@ -14,5 +14,9 @@ node_modules/
 web/dist/
 web/.vite/
 
+# PyInstaller release build
+/build/
+/dist/
+
 # Local config overrides
 .env

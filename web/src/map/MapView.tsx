@@ -13,10 +13,12 @@ import { ago, coordText, frpText, magnitudeText } from "../components/format";
 import { PROVENANCE_MARKS } from "../components/ProvenanceBadge";
 import { circlePolygon, framesAt, surfaceWaveRadiusKm } from "./geometry";
 import { registerIcons } from "./icons";
+import { type AerialCapture, fetchAerialCapture } from "./imagery";
 import {
   LAYER_AERIAL,
   LAYER_EVENT_HALO,
   LAYER_EVENT_ICONS,
+  LAYER_LIVE,
   LAYER_QUAKE_PULSE,
   PULSE_WINDOW_SECONDS,
   SRC_EVENTS,
@@ -25,8 +27,10 @@ import {
   SRC_WAVEFRONT,
   addAerial,
   addLayers,
+  addLiveImagery,
   pulsePaint,
   setData,
+  setLiveImageryDate,
 } from "./layers";
 import {
   FLAME_PATH,
@@ -39,6 +43,13 @@ import {
 import type { MapClock } from "./useMapClock";
 
 const BASEMAP = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+export type Basemap = "dark" | "aerial" | "live";
+
+function showBasemap(map: MapLibreMap, basemap: Basemap): void {
+  map.setLayoutProperty(LAYER_AERIAL, "visibility", basemap === "aerial" ? "visible" : "none");
+  map.setLayoutProperty(LAYER_LIVE, "visibility", basemap === "live" ? "visible" : "none");
+}
 
 // Bundlers cannot resolve MapLibre 6's default worker path; see vite.config.ts.
 setWorkerUrl(workerUrl);
@@ -69,7 +80,9 @@ interface Props {
   onSelect: (eventId: string) => void;
   onPickLocation: (lon: number, lat: number) => void;
   pickMode: boolean;
-  aerial: boolean;
+  basemap: Basemap;
+  imageryDate: string;
+  onAerialCapture: (capture: AerialCapture | null | undefined) => void;
   trackVisible: boolean;
   onVisibleChange: (eventIds: Set<string>) => void;
 }
@@ -245,6 +258,24 @@ export function MapView(props: Props): React.JSX.Element {
   const latest = useRef(props);
   latest.current = props;
 
+  const aerialAbort = useRef<AbortController | null>(null);
+
+  // Esri's mosaic vintage varies by location, so it must be re-checked
+  // whenever the view settles, not just once when the layer turns on.
+  const requestAerialCapture = (map: MapLibreMap): void => {
+    aerialAbort.current?.abort();
+    const controller = new AbortController();
+    aerialAbort.current = controller;
+    const { lng, lat } = map.getCenter();
+    fetchAerialCapture(lng, lat, controller.signal)
+      .then((capture) => {
+        if (!controller.signal.aborted) latest.current.onAerialCapture(capture);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) latest.current.onAerialCapture(null);
+      });
+  };
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -268,16 +299,14 @@ export function MapView(props: Props): React.JSX.Element {
       registerIcons(map);
       addLayers(map);
       addAerial(map);
+      addLiveImagery(map, latest.current.imageryDate);
       readyRef.current = true;
       map.getContainer().dataset["mapReady"] = "true";
 
       setData(map, SRC_EVENTS, latest.current.events);
       setData(map, SRC_WATCH, watchCollection(latest.current.watchAreas));
-      map.setLayoutProperty(
-        LAYER_AERIAL,
-        "visibility",
-        latest.current.aerial ? "visible" : "none",
-      );
+      showBasemap(map, latest.current.basemap);
+      if (latest.current.basemap === "aerial") requestAerialCapture(map);
       map.setFilter(LAYER_EVENT_HALO, [
         "==",
         ["get", "eventId"],
@@ -366,6 +395,9 @@ export function MapView(props: Props): React.JSX.Element {
     reportVisibleRef.current = reportVisible;
     map.on("moveend", reportVisible);
     map.on("idle", reportVisible);
+    map.on("moveend", () => {
+      if (latest.current.basemap === "aerial") requestAerialCapture(map);
+    });
 
     const tick = (time: number): void => {
       frame = requestAnimationFrame(tick);
@@ -459,8 +491,20 @@ export function MapView(props: Props): React.JSX.Element {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
-    map.setLayoutProperty(LAYER_AERIAL, "visibility", props.aerial ? "visible" : "none");
-  }, [props.aerial]);
+    showBasemap(map, props.basemap);
+    if (props.basemap === "aerial") {
+      props.onAerialCapture(undefined);
+      requestAerialCapture(map);
+    } else {
+      aerialAbort.current?.abort();
+    }
+  }, [props.basemap]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    setLiveImageryDate(map, props.imageryDate);
+  }, [props.imageryDate]);
 
   useEffect(() => {
     const map = mapRef.current;

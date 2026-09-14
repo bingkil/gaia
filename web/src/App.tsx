@@ -4,6 +4,7 @@ import type { HazardEvent } from "./api/types";
 import { ClockBar } from "./components/ClockBar";
 import { EventDetail } from "./components/EventDetail";
 import { EventList } from "./components/EventList";
+import { ImageryAgeBadge } from "./components/ImageryAgeBadge";
 import { Legend } from "./components/Legend";
 import { NotificationFeed } from "./components/NotificationFeed";
 import { ProviderHealthPanel } from "./components/ProviderHealthPanel";
@@ -11,14 +12,22 @@ import { SettingsModal } from "./components/SettingsModal";
 import { TopBar } from "./components/TopBar";
 import { VaaIngestPanel } from "./components/VaaIngestPanel";
 import { WatchAreaPanel } from "./components/WatchAreaPanel";
-import { type MapFocus, MapView } from "./map/MapView";
+import { type Basemap, type MapFocus, MapView } from "./map/MapView";
+import type { AerialCapture } from "./map/imagery";
 import { useMapClock } from "./map/useMapClock";
-import { DEFAULT_RANGE, type TimeRange, rangeSummary } from "./state/timeRange";
+import { DEFAULT_RANGE, type TimeRange, imageryDate, rangeSummary } from "./state/timeRange";
 import { useTimeZone } from "./state/timeZone";
 import { type Filters, useGaiaData } from "./state/useGaiaData";
 
 const LOCATION_KEY = "gaia.location";
+const BASEMAP_KEY = "gaia.basemap";
 const AERIAL_KEY = "gaia.aerial";
+
+function loadBasemap(): Basemap {
+  const stored = window.localStorage.getItem(BASEMAP_KEY);
+  if (stored === "dark" || stored === "aerial" || stored === "live") return stored;
+  return window.localStorage.getItem(AERIAL_KEY) === "1" ? "aerial" : "dark";
+}
 
 interface Location {
   longitude: number;
@@ -47,7 +56,8 @@ export function App(): React.JSX.Element {
   const [inView, setInView] = useState(false);
   const [visibleIds, setVisibleIds] = useState<Set<string> | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [aerial, setAerial] = useState(() => window.localStorage.getItem(AERIAL_KEY) === "1");
+  const [basemap, setBasemap] = useState<Basemap>(loadBasemap);
+  const [aerialCapture, setAerialCapture] = useState<AerialCapture | null | undefined>(undefined);
   const [location, setLocation] = useState<Location | null>(loadLocation);
 
   const data = useGaiaData(filters, zone);
@@ -58,8 +68,8 @@ export function App(): React.JSX.Element {
   }, [location]);
 
   useEffect(() => {
-    window.localStorage.setItem(AERIAL_KEY, aerial ? "1" : "0");
-  }, [aerial]);
+    window.localStorage.setItem(BASEMAP_KEY, basemap);
+  }, [basemap]);
 
   // A fresh object every time, so clicking the same row twice re-centres.
   const onSelectEvent = useCallback((event: HazardEvent) => {
@@ -137,11 +147,19 @@ export function App(): React.JSX.Element {
           onSelect={setSelectedId}
           onPickLocation={onPickLocation}
           pickMode={pickMode}
-          aerial={aerial}
+          basemap={basemap}
+          imageryDate={imageryDate(filters.range)}
+          onAerialCapture={setAerialCapture}
           trackVisible={inView}
           onVisibleChange={setVisibleIds}
         />
       ) : null}
+
+      <ImageryAgeBadge
+        basemap={basemap}
+        imageryDate={imageryDate(filters.range)}
+        aerialCapture={aerialCapture}
+      />
 
       <TopBar
         filters={filters}
@@ -152,8 +170,9 @@ export function App(): React.JSX.Element {
         onPickMode={setPickMode}
         hasLocation={location !== null}
         onUseMyLocation={onUseMyLocation}
-        aerial={aerial}
-        onAerial={setAerial}
+        basemap={basemap}
+        onBasemap={setBasemap}
+        imageryDate={imageryDate(filters.range)}
         onReload={data.reloadEvents}
         onSettings={() => setSettingsOpen(true)}
       />

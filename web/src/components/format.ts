@@ -124,6 +124,19 @@ export function ago(seconds: number | null | undefined): string {
   return `${Math.round(seconds / 86_400)}d ago`;
 }
 
+/**
+ * Basemap imagery ages in days, months and years rather than the
+ * minutes-to-days span `ago()` covers, so it gets its own coarser scale.
+ */
+export function longAgo(seconds: number): string {
+  if (seconds < 0) return "today";
+  const days = seconds / 86_400;
+  if (days < 1) return "today";
+  if (days < 30) return `${Math.round(days)}d ago`;
+  if (days < 365) return `${Math.round(days / 30)}mo ago`;
+  return `${(days / 365).toFixed(1)}y ago`;
+}
+
 export function countdown(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(whole / 60);

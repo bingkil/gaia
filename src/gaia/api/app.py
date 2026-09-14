@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,7 +23,13 @@ from . import realtime, routes
 
 log = logging.getLogger(__name__)
 
-WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+# A PyInstaller build carries the built frontend under its own extraction
+# root instead of alongside a "src" checkout.
+WEB_DIST = (
+    Path(sys._MEIPASS) / "web" / "dist"
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+    else Path(__file__).resolve().parents[3] / "web" / "dist"
+)
 
 # Chrome refuses a module worker served as application/octet-stream, which is
 # what Python guesses for .mjs, and the failure is silent.
