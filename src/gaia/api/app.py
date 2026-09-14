@@ -31,6 +31,15 @@ WEB_DIST = (
     else Path(__file__).resolve().parents[3] / "web" / "dist"
 )
 
+# Same reasoning as WEB_DIST: these live at the repo root in source, and
+# alongside the extraction root in a packaged build (see packaging/gaia.spec).
+REPO_ROOT = (
+    Path(sys._MEIPASS)
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+    else Path(__file__).resolve().parents[3]
+)
+LEGAL_DOCS = ("TERMS_OF_SERVICE.md", "PRIVACY.md")
+
 # Chrome refuses a module worker served as application/octet-stream, which is
 # what Python guesses for .mjs, and the failure is silent.
 mimetypes.add_type("text/javascript", ".mjs")
@@ -69,6 +78,15 @@ def create_app(settings: Settings | None = None, start_ingestion: bool = True) -
     async def healthz() -> dict[str, str]:
         """Process liveness only. Data freshness lives at /v1/provider-health."""
         return {"status": "ok"}
+
+    for filename in LEGAL_DOCS:
+        path = REPO_ROOT / filename
+        if not path.is_file():
+            continue
+
+        @app.get(f"/{filename}", include_in_schema=False)
+        async def legal_doc(path: Path = path) -> FileResponse:
+            return FileResponse(path, media_type="text/markdown")
 
     if WEB_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")

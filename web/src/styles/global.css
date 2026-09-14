@@ -628,6 +628,18 @@ input[type="range"] {
   overflow: hidden auto;
   padding: 12px 14px 14px;
 }
+.modal .panel-title {
+  font-size: 12px;
+}
+.modal .legend-note {
+  font-size: 12px;
+}
+.modal .settings-table {
+  font-size: 12px;
+}
+.modal .settings-table th {
+  font-size: 10px;
+}
 .settings-table {
   width: 100%;
   border-collapse: collapse;
@@ -653,6 +665,7 @@ input[type="range"] {
 }
 .modal code {
   font-family: var(--mono);
+  font-size: 12px;
   color: var(--fg-dim);
 }
 .legend-swatch {

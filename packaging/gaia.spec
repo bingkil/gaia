@@ -22,6 +22,8 @@ a = Analysis(  # noqa: F821
     datas=[
         (str(SRC / "gaia" / "schema.sql"), "gaia"),
         (str(WEB_DIST), "web/dist"),
+        (str(ROOT / "TERMS_OF_SERVICE.md"), "."),
+        (str(ROOT / "PRIVACY.md"), "."),
     ],
     hiddenimports=[
         # uvicorn picks its protocol/loop implementations by string name at

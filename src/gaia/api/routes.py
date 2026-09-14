@@ -410,6 +410,27 @@ async def create_watch_area(request: Request, body: WatchAreaRequest) -> dict[st
     return area.model_dump(mode="json")
 
 
+@router.put("/watch-areas/{area_id}")
+async def update_watch_area(
+    request: Request, area_id: str, body: WatchAreaRequest
+) -> dict[str, Any]:
+    runtime = runtime_of(request)
+    repo = WatchAreaRepo(runtime.db)
+    if repo.get(area_id) is None:
+        raise HTTPException(404, "watch area not found")
+
+    area = WatchArea(
+        id=area_id,
+        name=body.name,
+        geometry=circle_geojson(body.longitude, body.latitude, body.radiusKm),
+        hazard_types=body.hazardTypes,
+        min_magnitude=body.minMagnitude,
+        radius_km=body.radiusKm,
+    )
+    repo.save(area)
+    return area.model_dump(mode="json")
+
+
 @router.delete("/watch-areas/{area_id}", status_code=204)
 async def delete_watch_area(request: Request, area_id: str) -> None:
     WatchAreaRepo(runtime_of(request).db).delete(area_id)

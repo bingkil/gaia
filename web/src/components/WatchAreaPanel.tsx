@@ -8,30 +8,84 @@ interface Props {
   onChanged: () => void;
 }
 
+/** The circle ring is symmetric around its centre, so its bbox midpoint is the centre. */
+function centerOf(geometry: GeoJSON.Geometry): { longitude: number; latitude: number } {
+  const ring = geometry.type === "Polygon" ? (geometry.coordinates[0] ?? []) : [];
+  const lons = ring.map((p) => p[0] ?? 0);
+  const lats = ring.map((p) => p[1] ?? 0);
+  return {
+    longitude: (Math.min(...lons) + Math.max(...lons)) / 2,
+    latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
+  };
+}
+
 export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [radiusKm, setRadiusKm] = useState(300);
   const [minMagnitude, setMinMagnitude] = useState(4.5);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = (area: WatchArea): void => {
+    setEditingId(area.id);
+    setName(area.name);
+    setRadiusKm(area.radius_km);
+    setMinMagnitude(area.min_magnitude);
+    setError(null);
+  };
+
+  const cancelEdit = (): void => {
+    setEditingId(null);
+    setName("");
+    setError(null);
+  };
 
   const submit = (): void => {
-    if (!location || name.trim() === "") return;
+    if (name.trim() === "") return;
+
+    const editing = editingId ? watchAreas.find((a) => a.id === editingId) : undefined;
+    const target = editing ? centerOf(editing.geometry) : location;
+    if (!target) return;
+
     setBusy(true);
-    api
-      .createWatchArea({
-        name: name.trim(),
-        longitude: location.longitude,
-        latitude: location.latitude,
-        radiusKm,
-        minMagnitude,
-      })
+    setError(null);
+    const body = {
+      name: name.trim(),
+      longitude: target.longitude,
+      latitude: target.latitude,
+      radiusKm,
+      minMagnitude,
+    };
+    const request = editing ? api.updateWatchArea(editing.id, body) : api.createWatchArea(body);
+
+    request
       .then(() => {
         setName("");
+        setEditingId(null);
         onChanged();
       })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "could not save the watch area"),
+      )
       .finally(() => setBusy(false));
   };
+
+  const remove = (area: WatchArea): void => {
+    setError(null);
+    api
+      .deleteWatchArea(area.id)
+      .then(() => {
+        if (editingId === area.id) cancelEdit();
+        onChanged();
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "could not delete the watch area"),
+      );
+  };
+
+  const showForm = editingId !== null || location !== null;
 
   return (
     <section className="panel glass">
@@ -55,7 +109,15 @@ export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): Reac
               </span>
               <button
                 className="btn ghost"
-                onClick={() => api.deleteWatchArea(area.id).then(onChanged)}
+                onClick={() => startEdit(area)}
+                type="button"
+                aria-label={`Edit ${area.name}`}
+              >
+                ✎
+              </button>
+              <button
+                className="btn ghost"
+                onClick={() => remove(area)}
                 type="button"
                 aria-label={`Delete ${area.name}`}
               >
@@ -66,7 +128,9 @@ export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): Reac
 
           <div style={{ borderTop: "1px solid var(--glass-border)", margin: "10px 0" }} />
 
-          {location ? (
+          {error ? <p className="legend-note">{error}</p> : null}
+
+          {showForm ? (
             <>
               <div className="field">
                 <label htmlFor="watch-name">Name</label>
@@ -102,14 +166,21 @@ export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): Reac
                   />
                 </div>
               </div>
-              <button
-                className="btn"
-                onClick={submit}
-                disabled={busy || name.trim() === ""}
-                type="button"
-              >
-                Add at current location
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  className="btn"
+                  onClick={submit}
+                  disabled={busy || name.trim() === ""}
+                  type="button"
+                >
+                  {editingId ? "Save changes" : "Add at current location"}
+                </button>
+                {editingId ? (
+                  <button className="btn ghost" onClick={cancelEdit} type="button">
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
             </>
           ) : (
             <p className="empty" style={{ padding: "6px 0" }}>

@@ -221,7 +221,7 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
           <dt>Origin</dt>
           <dd>
             {stampIn(zone, detail.origin_time)}
-            {zone === "LOCAL" ? (
+            {zone !== "UTC" ? (
               <span style={{ color: "var(--fg-faint)" }}> · {utcStamp(detail.origin_time)}</span>
             ) : null}
           </dd>

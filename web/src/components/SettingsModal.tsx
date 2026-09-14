@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { FirmsKeyStatus, SettingsResponse } from "../api/types";
-import { DEVICE_ZONE, useTimeZone } from "../state/timeZone";
+import { DEVICE_ZONE, TIME_ZONES, useTimeZone } from "../state/timeZone";
 
 function cadence(seconds: number | null): string {
   if (seconds === null) return "continuous";
@@ -88,13 +88,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
               UTC
             </button>
             <button
-              className={`btn${zone === "LOCAL" ? " on" : ""}`}
-              onClick={() => setZone("LOCAL")}
+              className={`btn${zone === DEVICE_ZONE ? " on" : ""}`}
+              onClick={() => setZone(DEVICE_ZONE)}
               type="button"
             >
-              {DEVICE_ZONE}
+              This device ({DEVICE_ZONE})
             </button>
           </div>
+          <select
+            aria-label="Choose a time zone"
+            value={zone}
+            onChange={(event) => setZone(event.target.value)}
+            style={{ width: "100%", margin: "0 0 8px" }}
+          >
+            <option value="UTC">UTC</option>
+            {TIME_ZONES.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
           <p className="legend-note">
             Every feed reports in UTC and volcanic ash advisories are read in UTC by the people
             who issue them, so UTC is the default. Local times always carry their offset, and
@@ -145,17 +158,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
           </div>
           <p className="legend-note">
             Satellite heat detections need a free key from NASA FIRMS. Without one, fires are
-            reported from GDACS alone and cannot reach satellite-confirmed confidence. Request
-            one at{" "}
-            <a
-              href="https://firms.modaps.eosdis.nasa.gov/api/map_key/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              firms.modaps.eosdis.nasa.gov
-            </a>
-            .
+            reported from GDACS alone and cannot reach satellite-confirmed confidence.
           </p>
+          <p className="legend-note">
+            New to FIRMS? Get a key in under a minute:
+          </p>
+          <ol className="legend-note" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
+            <li>
+              Open{" "}
+              <a
+                href="https://firms.modaps.eosdis.nasa.gov/api/map_key/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                firms.modaps.eosdis.nasa.gov/api/map_key
+              </a>
+            </li>
+            <li>Enter your email address and submit the form.</li>
+            <li>NASA emails you a MAP_KEY — copy it.</li>
+            <li>Paste it below and click Save.</li>
+          </ol>
           {firmsStatus?.configured ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
               <span className="tag">key {firmsStatus.hint}</span>
@@ -198,6 +220,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
           <p className="legend-note">
             Stored on this machine beside the database, never in the repository, and never sent
             back to this page.
+          </p>
+
+          <p className="legend-note" style={{ marginTop: 14 }}>
+            © {new Date().getFullYear()} bingkil.com ·{" "}
+            <a href="https://bingkil.com" target="_blank" rel="noreferrer">
+              bingkil.com
+            </a>{" "}
+            ·{" "}
+            <a href="/TERMS_OF_SERVICE.md" target="_blank" rel="noreferrer">
+              Terms of Service
+            </a>{" "}
+            ·{" "}
+            <a href="/PRIVACY.md" target="_blank" rel="noreferrer">
+              Privacy Policy
+            </a>
           </p>
         </div>
       </div>

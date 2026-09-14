@@ -25,24 +25,44 @@ export function msClock(ms: number): string {
   return new Date(ms).toISOString().slice(11, 19) + "Z";
 }
 
-const localTimeFormat = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-  timeZoneName: "shortOffset",
-});
+// Formatters are keyed by zone and cached: a picker can select any of the
+// ~400 IANA zones, and building a new one on every call would be wasteful.
+const timeFormatCache = new Map<string, Intl.DateTimeFormat>();
+function timeFormatFor(zone: string): Intl.DateTimeFormat {
+  let format = timeFormatCache.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZoneName: "shortOffset",
+      timeZone: zone,
+    });
+    timeFormatCache.set(zone, format);
+  }
+  return format;
+}
 
-const localStampFormat = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-  timeZoneName: "shortOffset",
-});
+const stampFormatCache = new Map<string, Intl.DateTimeFormat>();
+function stampFormatFor(zone: string): Intl.DateTimeFormat {
+  let format = stampFormatCache.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZoneName: "shortOffset",
+      timeZone: zone,
+    });
+    stampFormatCache.set(zone, format);
+  }
+  return format;
+}
 
 function localise(value: Date, format: Intl.DateTimeFormat): string {
   // Normalised because the locale separator varies and the offset must read
@@ -55,7 +75,7 @@ export function timeIn(zone: TimeZonePref, iso: string | null | undefined): stri
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return localise(date, localTimeFormat);
+  return localise(date, timeFormatFor(zone));
 }
 
 export function stampIn(zone: TimeZonePref, iso: string | null | undefined): string {
@@ -63,11 +83,11 @@ export function stampIn(zone: TimeZonePref, iso: string | null | undefined): str
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return localise(date, localStampFormat);
+  return localise(date, stampFormatFor(zone));
 }
 
 export function clockIn(zone: TimeZonePref, ms: number): string {
-  return zone === "UTC" ? msClock(ms) : localise(new Date(ms), localTimeFormat);
+  return zone === "UTC" ? msClock(ms) : localise(new Date(ms), timeFormatFor(zone));
 }
 
 const dayKeyUtc = new Intl.DateTimeFormat("en-CA", {
@@ -77,20 +97,38 @@ const dayKeyUtc = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-const dayKeyLocal = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+const dayKeyCache = new Map<string, Intl.DateTimeFormat>();
+function dayKeyFor(zone: string): Intl.DateTimeFormat {
+  let format = dayKeyCache.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: zone,
+    });
+    dayKeyCache.set(zone, format);
+  }
+  return format;
+}
 
-const localShortFormat = new Intl.DateTimeFormat("en-CA", {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  timeZoneName: "shortOffset",
-});
+const shortFormatCache = new Map<string, Intl.DateTimeFormat>();
+function shortFormatFor(zone: string): Intl.DateTimeFormat {
+  let format = shortFormatCache.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZoneName: "shortOffset",
+      timeZone: zone,
+    });
+    shortFormatCache.set(zone, format);
+  }
+  return format;
+}
 
 /**
  * List times carry their date unless they are from today, because the list
@@ -102,7 +140,7 @@ export function eventTime(zone: TimeZonePref, iso: string | null | undefined): s
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
 
-  const dayKey = zone === "UTC" ? dayKeyUtc : dayKeyLocal;
+  const dayKey = zone === "UTC" ? dayKeyUtc : dayKeyFor(zone);
   const day = dayKey.format(date);
   const today = dayKey.format(new Date());
 
@@ -113,7 +151,7 @@ export function eventTime(zone: TimeZonePref, iso: string | null | undefined): s
     const stamp = date.toISOString();
     return `${stamp.slice(5, 10)} ${stamp.slice(11, 16)}Z`;
   }
-  return localise(date, localShortFormat);
+  return localise(date, shortFormatFor(zone));
 }
 
 export function ago(seconds: number | null | undefined): string {

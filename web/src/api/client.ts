@@ -107,6 +107,17 @@ export const api = {
     minMagnitude: number;
   }) => request<WatchArea>("/v1/watch-areas", { method: "POST", body: JSON.stringify(body) }),
 
+  updateWatchArea: (
+    id: string,
+    body: {
+      name: string;
+      longitude: number;
+      latitude: number;
+      radiusKm: number;
+      minMagnitude: number;
+    },
+  ) => request<WatchArea>(`/v1/watch-areas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+
   deleteWatchArea: (id: string) =>
     request<void>(`/v1/watch-areas/${id}`, { method: "DELETE" }),
 
