@@ -8,11 +8,14 @@ import type {
   WatchArea,
 } from "../api/types";
 import { decorateEventFeatures } from "../map/severity";
+import { type TimeRange, rangeParams } from "./timeRange";
+import type { TimeZonePref } from "./timeZone";
 import { useRealtime } from "./useRealtime";
 
 export interface Filters {
   hazardType: string;
   minMagnitude: number | undefined;
+  range: TimeRange;
 }
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
@@ -32,7 +35,7 @@ export interface GaiaData {
   reloadEvents: () => void;
 }
 
-export function useGaiaData(filters: Filters): GaiaData {
+export function useGaiaData(filters: Filters, zone: TimeZonePref): GaiaData {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [events, setEvents] = useState<HazardEvent[]>([]);
   const [eventFeatures, setEventFeatures] = useState<GeoJSON.FeatureCollection>(EMPTY);
@@ -45,6 +48,9 @@ export function useGaiaData(filters: Filters): GaiaData {
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
+  const zoneRef = useRef(zone);
+  zoneRef.current = zone;
+
   const report = useCallback((err: unknown) => {
     setError(err instanceof Error ? err.message : String(err));
   }, []);
@@ -53,6 +59,7 @@ export function useGaiaData(filters: Filters): GaiaData {
     const query = {
       hazardType: filtersRef.current.hazardType,
       minMagnitude: filtersRef.current.minMagnitude,
+      ...rangeParams(filtersRef.current.range, zoneRef.current),
     };
     Promise.all([api.events(query), api.mapEvents(query), api.mapFrames()])
       .then(([list, map, frameData]) => {
@@ -85,7 +92,7 @@ export function useGaiaData(filters: Filters): GaiaData {
 
   useEffect(() => {
     reloadEvents();
-  }, [reloadEvents, filters.hazardType, filters.minMagnitude]);
+  }, [reloadEvents, filters.hazardType, filters.minMagnitude, filters.range, zone]);
 
   const onChange = useCallback(
     (subjects: Set<string>) => {

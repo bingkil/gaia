@@ -5,11 +5,12 @@ Covers the scenarios spec section 22.3 calls out as mandatory.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from gaia.config import AlertSettings, CorrelationSettings, ModelSettings
+from gaia.config import AlertSettings, CorrelationSettings, FirmsSettings, ModelSettings
 from gaia.domain.enums import (
     PROVENANCE_LABELS,
     Action,
@@ -23,9 +24,12 @@ from gaia.domain.enums import (
 from gaia.domain.models import Observation
 from gaia.engine.changes import material_changes
 from gaia.engine.correlate import best_match, score_pair
-from gaia.engine.fusion import build_event, classify_provenance, compute_confidence
+from gaia.engine.fusion import build_event, classify_provenance, compute_confidence, derive_state
 from gaia.engine.impact import alert_radius_km, earthquake_impact
 from gaia.engine.volcano import ThermalCluster, classify_thermal
+from gaia.engine.wildfire import FireCluster, classify_fire
+from gaia.providers.firms import FirmsAdapter
+from gaia.providers.gdacs import GdacsAdapter
 
 ORIGIN = datetime(2026, 9, 13, 19, 41, 17, tzinfo=UTC)
 CORRELATION = CorrelationSettings()
@@ -77,7 +81,11 @@ class TestCorrelation:
 
         # USGS reports the same event 8 km and 4 seconds away.
         second = make_obs(
-            "USGS", "u1", lon=22.20, lat=38.34, magnitude=6.0,
+            "USGS",
+            "u1",
+            lon=22.20,
+            lat=38.34,
+            magnitude=6.0,
             origin=ORIGIN + timedelta(seconds=4),
         )
         match = best_match(second, [event], CORRELATION)
@@ -93,7 +101,11 @@ class TestCorrelation:
 
         # An aftershock 30 seconds later, 15 km away: within every window.
         aftershock = make_obs(
-            "EMSC", "aftershock", lon=22.25, lat=38.38, magnitude=5.4,
+            "EMSC",
+            "aftershock",
+            lon=22.25,
+            lat=38.38,
+            magnitude=5.4,
             origin=ORIGIN + timedelta(seconds=30),
         )
         score, reasons = score_pair(aftershock, event, CORRELATION)
@@ -147,9 +159,7 @@ class TestCorrelation:
 
 class TestFusion:
     def test_single_source_is_preliminary(self):
-        event, changes = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        event, changes = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
 
         assert event.provenance_class == ProvenanceClass.SINGLE_SOURCE_RAPID
         assert event.state == EventState.PRELIMINARY
@@ -186,9 +196,7 @@ class TestFusion:
         reviewed = make_obs("USGS", "u1", magnitude=6.5, reviewed=True, ingested_offset=0)
         automatic = make_obs("EMSC", "e1", magnitude=5.9, ingested_offset=100)
 
-        event, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [reviewed, automatic], None
-        )
+        event, _ = build_event("evt_1", HazardType.EARTHQUAKE, [reviewed, automatic], None)
 
         assert event.summary.magnitude == 6.5
         assert event.quality == Quality.REVIEWED
@@ -203,9 +211,7 @@ class TestFusion:
         assert all(v in known_ids for v in event.field_provenance.values())
 
     def test_retraction_moves_to_retracted(self):
-        first, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        first, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         deleted = make_obs("EMSC", "e1", revision="2", action=Action.DELETE)
 
         event, _ = build_event("evt_1", HazardType.EARTHQUAKE, [deleted], first)
@@ -234,9 +240,7 @@ class TestFusion:
 
 class TestMaterialChange:
     def test_first_observation_is_initial(self):
-        event, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        event, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         alert_type, reasons = material_changes(None, event, ALERTS)
 
         assert alert_type == AlertType.INITIAL
@@ -266,9 +270,7 @@ class TestMaterialChange:
         assert any("MAGNITUDE_CHANGED" in r for r in reasons)
 
     def test_provenance_upgrade_escalates(self):
-        first, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        first, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         second, _ = build_event(
             "evt_1",
             HazardType.EARTHQUAKE,
@@ -281,9 +283,7 @@ class TestMaterialChange:
         assert "PROVENANCE_UPGRADED" in reasons
 
     def test_retraction_is_always_a_cancellation(self):
-        first, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        first, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         deleted = make_obs("EMSC", "e1", revision="2", action=Action.DELETE)
         second, _ = build_event("evt_1", HazardType.EARTHQUAKE, [deleted], first)
 
@@ -294,9 +294,7 @@ class TestMaterialChange:
 
 class TestImpact:
     def test_s_wave_arrives_after_p_wave(self):
-        event, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        event, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         # Roughly 200 km away.
         impact = earthquake_impact(event, 24.5, 38.32, MODEL)
 
@@ -305,9 +303,7 @@ class TestImpact:
         assert impact.distance_km > 150
 
     def test_arrival_is_an_interval_not_a_point(self):
-        event, _ = build_event(
-            "evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None
-        )
+        event, _ = build_event("evt_1", HazardType.EARTHQUAKE, [make_obs("EMSC", "e1")], None)
         impact = earthquake_impact(event, 24.5, 38.32, MODEL)
 
         assert impact.s_arrival.earliest < impact.s_arrival.estimate
@@ -388,7 +384,130 @@ class TestThermalClassification:
 
     def test_ash_advisory_confirms(self):
         cluster = ThermalCluster("v_etna", 5, 2, 88.0, 1.2)
-        assert (
-            classify_thermal(cluster, has_ash_advisory=True)[0].value
-            == "CONFIRMED_ERUPTION"
+        assert classify_thermal(cluster, has_ash_advisory=True)[0].value == "CONFIRMED_ERUPTION"
+
+
+def _gdacs_feature(
+    *,
+    event_type: str = "WF",
+    event_id: int = 1030252,
+    todate: str = "2026-08-25T00:00:00",
+    iscurrent: str = "false",
+) -> dict:
+    """Shaped from a live GDACS response; a fire leaves ``eventname`` empty."""
+    return {
+        "geometry": {"type": "Point", "coordinates": [21.1671, 44.8678]},
+        "properties": {
+            "eventid": event_id,
+            "eventtype": event_type,
+            "eventname": "" if event_type == "WF" else "Krakatau",
+            "name": "Forest fires in Serbia",
+            "country": "Serbia",
+            "alertlevel": "Orange",
+            "fromdate": "2026-08-05T00:00:00",
+            "todate": todate,
+            "iscurrent": iscurrent,
+            "datemodified": "2026-09-14T10:10:13",
+            "episodeid": 40,
+            "episodealertscore": 1.5,
+            "severitydata": {"severity": 18310.0, "severitytext": "", "severityunit": "ha"},
+        },
+    }
+
+
+def _parse_one(feature: dict) -> dict:
+    adapter = GdacsAdapter(None, None)
+    records = adapter.parse(json.dumps({"features": [feature]}).encode())
+    assert len(records) == 1
+    return records[0]
+
+
+class TestWildfire:
+    def test_fire_is_not_mistaken_for_a_volcano(self):
+        record = _parse_one(_gdacs_feature())
+        assert record["hazard_type"] is HazardType.WILDFIRE
+        # GDACS numbers each type separately, so a bare id could collide.
+        assert record["source_id"] == "WF_1030252"
+        assert record["normalized"]["volcano_name"] is None
+        assert record["normalized"]["place"] == "Serbia"
+
+    def test_volcano_keys_are_unchanged_by_the_fire_support(self):
+        record = _parse_one(_gdacs_feature(event_type="VO", event_id=1000148))
+        assert record["hazard_type"] is HazardType.VOLCANO
+        assert record["source_id"] == "1000148"
+        assert record["normalized"]["volcano_name"] == "Krakatau"
+
+    def test_burnt_out_fire_is_marked_ended(self):
+        record = _parse_one(_gdacs_feature(todate="2026-08-25T00:00:00", iscurrent="false"))
+        assert record["normalized"]["ended"] is True
+
+    def test_still_burning_fire_is_not_ended(self):
+        record = _parse_one(_gdacs_feature(todate="2099-01-01T00:00:00", iscurrent="true"))
+        assert record["normalized"]["ended"] is False
+
+    def test_volcano_alert_keeps_standing_even_when_not_current(self):
+        """An alert level holds until the agency withdraws it, unlike a fire."""
+        record = _parse_one(_gdacs_feature(event_type="VO", iscurrent="false"))
+        assert record["normalized"]["ended"] is False
+
+    def test_ended_feed_event_ends_rather_than_retracts(self):
+        obs = make_obs("GDACS", "WF_1")
+        obs.normalized["ended"] = True
+        state = derive_state([obs], EventState.PRELIMINARY, ProvenanceClass.SINGLE_SOURCE_RAPID)
+        assert state is EventState.ENDED
+
+    def test_ending_never_resurrects_a_retraction(self):
+        obs = make_obs("GDACS", "WF_1")
+        obs.normalized["ended"] = True
+        state = derive_state([obs], EventState.RETRACTED, ProvenanceClass.SINGLE_SOURCE_RAPID)
+        assert state is EventState.RETRACTED
+
+
+class TestFireClassification:
+    def test_single_pixel_is_never_a_fire(self):
+        reportable, reasons = classify_fire(FireCluster(1, 1, 12.0, 21.1, 44.8))
+        assert reportable is False
+        assert "CLUSTER_TOO_SMALL" in reasons
+
+    def test_small_cluster_is_not_enough(self):
+        assert classify_fire(FireCluster(4, 2, 200.0, 21.1, 44.8))[0] is False
+
+    def test_multi_satellite_cluster_reports(self):
+        reportable, reasons = classify_fire(FireCluster(6, 2, 60.0, 21.1, 44.8))
+        assert reportable is True
+        assert "MULTI_SATELLITE" in reasons
+
+    def test_multi_satellite_agreement_alone_is_not_enough(self):
+        """Both VIIRS satellites see every field burn, so agreement is cheap."""
+        reportable, reasons = classify_fire(FireCluster(40, 2, 12.0, 21.1, 44.8))
+        assert reportable is False
+        assert "WEAK_RADIATIVE_POWER" in reasons
+
+    def test_one_satellite_needs_strong_power(self):
+        assert classify_fire(FireCluster(6, 1, 40.0, 21.1, 44.8))[0] is False
+        assert classify_fire(FireCluster(6, 1, 150.0, 21.1, 44.8))[0] is True
+
+    def test_official_event_lets_a_lone_pixel_corroborate(self):
+        reportable, reasons = classify_fire(
+            FireCluster(1, 1, 5.0, 21.1, 44.8), has_official_event=True
         )
+        assert reportable is True
+        assert "OFFICIAL_EVENT_FEED_AGREES" in reasons
+
+
+class TestFirmsKeyRedaction:
+    """The key travels in the URL, so failures would otherwise log it."""
+
+    def _adapter(self, map_key: str) -> FirmsAdapter:
+        return FirmsAdapter(None, FirmsSettings(map_key=map_key))
+
+    def test_key_is_stripped_from_error_text(self):
+        adapter = self._adapter("SECRET123")
+        message = adapter.redact(
+            "Client error '400' for url 'https://firms/api/area/csv/SECRET123/VIIRS/1'"
+        )
+        assert "SECRET123" not in message
+        assert "[MAP_KEY]" in message
+
+    def test_no_key_configured_leaves_text_alone(self):
+        assert self._adapter("").redact("plain failure") == "plain failure"

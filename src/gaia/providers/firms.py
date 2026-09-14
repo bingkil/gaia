@@ -24,20 +24,9 @@ from .base import PollingAdapter
 
 log = logging.getLogger(__name__)
 
-# Bounding boxes over the principal volcanic arcs. Querying these rather than
-# the whole world keeps request volume within the free-tier limits.
-VOLCANIC_REGIONS: list[tuple[str, tuple[float, float, float, float]]] = [
-    ("indonesia_philippines", (94.0, -11.0, 141.0, 21.0)),
-    ("japan_kuril_kamchatka", (128.0, 29.0, 165.0, 62.0)),
-    ("alaska_aleutians", (-180.0, 50.0, -129.0, 66.0)),
-    ("central_america", (-118.0, 8.0, -82.0, 23.0)),
-    ("andes", (-80.0, -46.0, -62.0, 8.0)),
-    ("mediterranean", (10.0, 34.0, 30.0, 46.0)),
-    ("iceland", (-25.0, 62.0, -12.0, 67.0)),
-    ("east_africa", (28.0, -13.0, 46.0, 16.0)),
-    ("melanesia", (140.0, -25.0, 180.0, -1.0)),
-    ("tonga_kermadec", (-180.0, -26.0, -170.0, -12.0)),
-]
+# FIRMS serves the whole globe in one request, which costs two calls a cycle
+# instead of twenty and stops coverage ending at the volcanic arcs.
+GLOBAL_AREA = "world"
 
 
 class FirmsAdapter(PollingAdapter):
@@ -47,29 +36,32 @@ class FirmsAdapter(PollingAdapter):
     attribution = "NASA FIRMS"
     raw_extension = "csv"
 
+    def redact(self, text: str) -> str:
+        """The map key rides in the URL path, so errors quote it verbatim."""
+        key = self.settings.map_key
+        return text.replace(key, "[MAP_KEY]") if key else text
+
     async def poll_once(self, client: httpx.AsyncClient) -> int:
         if not self.settings.map_key:
             raise RuntimeError("FIRMS map key not configured")
 
         total = 0
         for product in self.settings.products:
-            for region_name, bbox in VOLCANIC_REGIONS:
-                area = ",".join(str(v) for v in bbox)
-                url = (
-                    f"{self.settings.base_url}/{self.settings.map_key}/"
-                    f"{product}/{area}/{self.settings.day_range}"
-                )
-                response = await client.get(url)
-                if response.status_code == 401:
-                    raise RuntimeError("FIRMS map key rejected")
-                response.raise_for_status()
+            url = (
+                f"{self.settings.base_url}/{self.settings.map_key}/"
+                f"{product}/{GLOBAL_AREA}/{self.settings.day_range}"
+            )
+            response = await client.get(url)
+            if response.status_code == 401:
+                raise RuntimeError("FIRMS map key rejected")
+            response.raise_for_status()
 
-                body = response.content
-                # FIRMS answers over-quota and errors with a plain-text body.
-                if b"," not in body.split(b"\n", 1)[0]:
-                    log.warning("FIRMS unexpected response: %s", body[:120])
-                    continue
-                total += await self.ingest(body, source_hint=f"{product}_{region_name}")
+            body = response.content
+            # FIRMS answers over-quota and errors with a plain-text body.
+            if b"," not in body.split(b"\n", 1)[0]:
+                log.warning("FIRMS unexpected response: %s", body[:120])
+                continue
+            total += await self.ingest(body, source_hint=product)
         return total
 
     def parse(self, raw: bytes) -> list[dict[str, Any]]:

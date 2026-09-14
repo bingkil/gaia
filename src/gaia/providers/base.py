@@ -67,6 +67,16 @@ class HazardAdapter(abc.ABC):
     def __init__(self, ctx: AdapterContext, settings: Any) -> None:
         self.ctx = ctx
         self.settings = settings
+        self._wake = asyncio.Event()
+
+    def request_poll(self) -> bool:
+        """Ask the loop to poll now. False when the adapter cannot be woken."""
+        self._wake.set()
+        return True
+
+    def redact(self, text: str) -> str:
+        """Strip credentials from anything bound for a log or the API."""
+        return text
 
     @abc.abstractmethod
     async def run(self) -> None:
@@ -148,12 +158,21 @@ class PollingAdapter(HazardAdapter):
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    log.warning("%s poll failed: %s", self.name, exc)
-                    await asyncio.to_thread(self.ctx.health.record_error, self.name, str(exc))
+                    message = self.redact(str(exc))
+                    log.warning("%s poll failed: %s", self.name, message)
+                    await asyncio.to_thread(self.ctx.health.record_error, self.name, message)
                     backoff = min(backoff * 2, 300.0)
                     delay = backoff
                 # Jitter keeps repeated polls from synchronising on the provider.
-                await asyncio.sleep(delay * random.uniform(0.95, 1.10))
+                await self._sleep_or_wake(delay * random.uniform(0.95, 1.10))
+
+    async def _sleep_or_wake(self, delay: float) -> None:
+        """Sleep, but cut it short when a manual refresh arrives."""
+        try:
+            await asyncio.wait_for(self._wake.wait(), timeout=delay)
+        except TimeoutError:
+            pass
+        self._wake.clear()
 
     @abc.abstractmethod
     async def poll_once(self, client: httpx.AsyncClient) -> int: ...
@@ -188,6 +207,10 @@ class PollingAdapter(HazardAdapter):
 
 class StreamingAdapter(HazardAdapter):
     """Persistent connection with heartbeat and exponential reconnect."""
+
+    def request_poll(self) -> bool:
+        """A live stream has nothing to fetch on demand."""
+        return False
 
     async def run(self) -> None:
         backoff = 1.0

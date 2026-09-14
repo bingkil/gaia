@@ -14,6 +14,7 @@ class HazardType(StrEnum):
     EARTHQUAKE = "EARTHQUAKE"
     VOLCANO = "VOLCANO"
     ASH = "ASH"
+    WILDFIRE = "WILDFIRE"
 
 
 class EventState(StrEnum):
@@ -72,6 +73,12 @@ HAZARD_PROVENANCE_LABELS: dict[tuple[HazardType, ProvenanceClass], str] = {
     (HazardType.ASH, ProvenanceClass.MULTISOURCE_RAPID): "Volcanic ash report",
     (HazardType.ASH, ProvenanceClass.SINGLE_SOURCE_RAPID): "Preliminary volcanic ash report",
     (HazardType.ASH, ProvenanceClass.AUTHORITATIVE_NOTICE): "Official volcanic ash advisory",
+    # A thermal cluster with no official counterpart keeps the generic
+    # automated-detection wording, which already says "possible" and names no
+    # cause. Satellite heat alone cannot tell a fire from a flare.
+    (HazardType.WILDFIRE, ProvenanceClass.MULTISOURCE_RAPID): "Wildfire report",
+    (HazardType.WILDFIRE, ProvenanceClass.SINGLE_SOURCE_RAPID): "Preliminary wildfire report",
+    (HazardType.WILDFIRE, ProvenanceClass.AUTHORITATIVE_NOTICE): "Official wildfire notice",
 }
 
 # Only an approved authority feed may ever carry an early-warning label. No

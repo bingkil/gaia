@@ -1,12 +1,15 @@
 import type {
   AlertDecision,
   EventDetail,
+  FirmsKeyStatus,
   HazardEvent,
   ImpactResponse,
   Meta,
   NotificationRecord,
   Observation,
   ProviderRecord,
+  RefreshResult,
+  SettingsResponse,
   WatchArea,
 } from "./types";
 
@@ -36,7 +39,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   meta: () => request<Meta>("/v1/meta"),
 
-  events: (params: { sinceHours?: number; minMagnitude?: number; hazardType?: string } = {}) => {
+  events: (
+    params: {
+      sinceHours?: number;
+      since?: string;
+      until?: string;
+      minMagnitude?: number;
+      hazardType?: string;
+    } = {},
+  ) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== "") query.set(key, String(value));
@@ -59,7 +70,15 @@ export const api = {
       `/v1/events/${eventId}/raw/${observationId}`,
     ),
 
-  mapEvents: (params: { minMagnitude?: number; hazardType?: string } = {}) => {
+  mapEvents: (
+    params: {
+      sinceHours?: number;
+      since?: string;
+      until?: string;
+      minMagnitude?: number;
+      hazardType?: string;
+    } = {},
+  ) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== "") query.set(key, String(value));
@@ -108,6 +127,22 @@ export const api = {
       "/v1/ingest/vaa",
       { method: "POST", body: JSON.stringify({ bulletin }) },
     ),
+
+  refreshProviders: (provider?: string) =>
+    request<{ results: RefreshResult[]; requestedAt: string }>("/v1/providers/refresh", {
+      method: "POST",
+      body: JSON.stringify({ provider: provider ?? null }),
+    }),
+
+  settings: () => request<SettingsResponse>("/v1/settings"),
+
+  setFirmsKey: (mapKey: string) =>
+    request<FirmsKeyStatus>("/v1/settings/firms-key", {
+      method: "PUT",
+      body: JSON.stringify({ mapKey }),
+    }),
+
+  clearFirmsKey: () => request<FirmsKeyStatus>("/v1/settings/firms-key", { method: "DELETE" }),
 };
 
 export { ApiError };

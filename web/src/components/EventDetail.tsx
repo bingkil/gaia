@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { ArrivalEstimate, EventDetail as EventDetailType, ImpactResult } from "../api/types";
+import type {
+  ArrivalEstimate,
+  EventDetail as EventDetailType,
+  HazardType,
+  ImpactResult,
+} from "../api/types";
 import type { MapClock } from "../map/useMapClock";
+import { useTimeZone } from "../state/timeZone";
 import { ProvenanceBadge } from "./ProvenanceBadge";
-import { countdown, km, magnitudeText, utcStamp, utcTime } from "./format";
+import { countdown, km, magnitudeText, stampIn, timeIn, utcStamp } from "./format";
+
+/** Fallback headings. A title must never assert a hazard the event is not. */
+const HAZARD_TITLES: Record<HazardType, string> = {
+  EARTHQUAKE: "Earthquake",
+  VOLCANO: "Volcano",
+  ASH: "Volcanic ash",
+  WILDFIRE: "Wildfire",
+};
 
 interface Props {
   eventId: string | null;
@@ -21,6 +35,7 @@ function ArrivalRow({
   arrival: ArrivalEstimate | null;
   nowMs: number;
 }): React.JSX.Element | null {
+  const { zone } = useTimeZone();
   if (!arrival) return null;
 
   const earliestMs = Date.parse(arrival.earliest);
@@ -32,7 +47,7 @@ function ArrivalRow({
     <div className="arrival-row">
       <span className="arrival-phase">{phase}</span>
       <span className="arrival-window">
-        {utcTime(arrival.earliest)} – {utcTime(arrival.latest)}
+        {timeIn(zone, arrival.earliest)} – {timeIn(zone, arrival.latest)}
       </span>
       <span className="arrival-window" style={{ color: passed ? "var(--fg-faint)" : undefined }}>
         {passed ? "passed" : secondsAway > 0 ? `in ${countdown(secondsAway)}` : "arriving"}
@@ -55,6 +70,7 @@ function ArrivalPanel({
   note: string;
   nowMs: number;
 }): React.JSX.Element {
+  const { zone } = useTimeZone();
   const model = impact.p_arrival?.model ?? impact.s_arrival?.model ?? "—";
 
   return (
@@ -75,10 +91,10 @@ function ArrivalPanel({
         <div className="arrival-row">
           <span className="arrival-phase">ASH</span>
           <span className="arrival-window">
-            {impact.ash_entry_time ? utcTime(impact.ash_entry_time) : "present"}
+            {impact.ash_entry_time ? timeIn(zone, impact.ash_entry_time) : "present"}
           </span>
           <span className="arrival-window">
-            {impact.ash_exit_time ? `to ${utcTime(impact.ash_exit_time)}` : ""}
+            {impact.ash_exit_time ? `to ${timeIn(zone, impact.ash_exit_time)}` : ""}
           </span>
         </div>
       ) : null}
@@ -91,6 +107,7 @@ function ArrivalPanel({
 }
 
 export function EventDetail({ eventId, location, clock, onClose }: Props): React.JSX.Element | null {
+  const { zone } = useTimeZone();
   const [detail, setDetail] = useState<EventDetailType | null>(null);
   const [impact, setImpact] = useState<{ result: ImpactResult; note: string } | null>(null);
 
@@ -152,7 +169,7 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
   const title =
     detail.hazard_type === "EARTHQUAKE"
       ? `M ${magnitudeText(detail.summary.magnitude)}`
-      : (detail.summary.volcano_name ?? "Volcano");
+      : (detail.summary.volcano_name ?? HAZARD_TITLES[detail.hazard_type]);
 
   return (
     <section className="panel glass grow">
@@ -202,9 +219,14 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
           <dt>Confidence</dt>
           <dd>{detail.confidence.toFixed(2)}</dd>
           <dt>Origin</dt>
-          <dd>{utcStamp(detail.origin_time)}</dd>
+          <dd>
+            {stampIn(zone, detail.origin_time)}
+            {zone === "LOCAL" ? (
+              <span style={{ color: "var(--fg-faint)" }}> · {utcStamp(detail.origin_time)}</span>
+            ) : null}
+          </dd>
           <dt>Updated</dt>
-          <dd>{utcStamp(detail.last_updated_at)}</dd>
+          <dd>{stampIn(zone, detail.last_updated_at)}</dd>
           <dt>Depth</dt>
           <dd>{km(detail.summary.depth_km)}</dd>
           <dt>Position</dt>
@@ -255,6 +277,10 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
                 </div>
               ))}
             </dl>
+            <p className="disclaimer">
+              Advisory times stay in UTC. That is the zone the issuing VAAC and its aviation
+              readers work in, and converting them here would invite a dispatch error.
+            </p>
           </>
         ) : null}
       </div>

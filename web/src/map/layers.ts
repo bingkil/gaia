@@ -1,4 +1,5 @@
 import type {
+  ExpressionSpecification,
   FilterSpecification,
   GeoJSONSource,
   LayerSpecification,
@@ -9,8 +10,14 @@ export const SRC_EVENTS = "gaia-events";
 export const SRC_FRAMES = "gaia-frames";
 export const SRC_WAVEFRONT = "gaia-wavefront";
 export const SRC_WATCH = "gaia-watch";
+export const SRC_AERIAL = "gaia-aerial";
 export const LAYER_EVENT_ICONS = "gaia-event-icons";
 export const LAYER_EVENT_HALO = "gaia-event-halo";
+export const LAYER_QUAKE_PULSE = "gaia-quake-pulse";
+export const LAYER_AERIAL = "gaia-aerial-raster";
+
+/** How long a quake keeps pulsing. By the end the ring has faded to nothing. */
+export const PULSE_WINDOW_SECONDS = 3600;
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -81,6 +88,24 @@ const LAYERS: LayerSpecification[] = [
     },
   },
   {
+    id: LAYER_QUAKE_PULSE,
+    type: "circle",
+    source: SRC_EVENTS,
+    filter: [
+      "all",
+      ["==", ["get", "hazardType"], "EARTHQUAKE"],
+      ["has", "originTimeMs"],
+      ["!", ["get", "retracted"]],
+    ],
+    paint: {
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-color": ["get", "colour"],
+      "circle-stroke-width": 1.6,
+      "circle-radius": 0,
+      "circle-stroke-opacity": 0,
+    },
+  },
+  {
     id: LAYER_EVENT_HALO,
     type: "circle",
     source: SRC_EVENTS,
@@ -115,6 +140,81 @@ export function addLayers(map: MapLibreMap): void {
   for (const layer of LAYERS) {
     if (!map.getLayer(layer.id)) map.addLayer(layer);
   }
+}
+
+/**
+ * Imagery sits above the basemap's terrain but below its labels, so switching
+ * view does not cost the place names. Held just short of full brightness and
+ * slightly desaturated: the markers are saturated and ringed, so they still
+ * read, but raw imagery at 1.0 pulls the eye away from the severity ramp.
+ */
+export function addAerial(map: MapLibreMap): void {
+  if (map.getLayer(LAYER_AERIAL)) return;
+  map.addSource(SRC_AERIAL, {
+    type: "raster",
+    tiles: [
+      "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    ],
+    tileSize: 256,
+    maxzoom: 19,
+    attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics",
+  });
+  const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+  map.addLayer(
+    {
+      id: LAYER_AERIAL,
+      type: "raster",
+      source: SRC_AERIAL,
+      layout: { visibility: "none" },
+      paint: { "raster-brightness-max": 0.95, "raster-saturation": -0.08 },
+    },
+    firstSymbol,
+  );
+}
+
+/**
+ * A ring that expands and fades on each event's own clock, quickly when the
+ * quake is minutes old and slowly near the end of the window, so recency reads
+ * as a rate. Age drives the phase rather than wall time, which would jump every
+ * time the period changed. Paint only: animating icon-size would re-lay out
+ * every symbol on the map each frame.
+ */
+export function pulsePaint(
+  nowMs: number,
+  animate: boolean,
+): { radius: ExpressionSpecification; opacity: ExpressionSpecification } {
+  const age: ExpressionSpecification = ["/", ["-", nowMs, ["get", "originTimeMs"]], 1000];
+  const period: ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    age,
+    0,
+    0.9,
+    PULSE_WINDOW_SECONDS,
+    4,
+  ];
+  // Held at mid-swell under reduced motion: the ring still marks the event and
+  // still fades with age, it just does not move.
+  const wave: ExpressionSpecification | number = animate
+    ? ["+", 0.5, ["*", 0.5, ["sin", ["*", 6.2831853, ["%", ["/", age, period], 1]]]]]
+    : 0.5;
+  // The leading stop at -1s keeps a scrubbed-past event from pulsing.
+  const fade: ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    age,
+    -1,
+    0,
+    0,
+    0.9,
+    PULSE_WINDOW_SECONDS,
+    0,
+  ];
+
+  return {
+    radius: ["+", 5, ["*", 1.8, ["get", "severity"]], ["*", 16, wave]],
+    opacity: ["*", fade, ["-", 1, ["*", 0.75, wave]]],
+  };
 }
 
 export function setData(

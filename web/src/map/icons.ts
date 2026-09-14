@@ -1,31 +1,41 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { SEVERITY_COLOURS, type Shape } from "./severity";
+import { FLAME_PATH, SEVERITY_COLOURS, type Shape, VOLCANO_PATH } from "./severity";
 
 const SIZE = 48;
-const SHAPES: Shape[] = ["circle", "triangle", "diamond"];
+const SHAPES: Shape[] = ["circle", "volcano", "diamond", "flame"];
 
-function drawShape(ctx: CanvasRenderingContext2D, shape: Shape, r: number): void {
+/** Places a 12x12 authored path centred in the canvas at the given box size. */
+function boxed(path: Path2D, d: string, side: number): void {
   const c = SIZE / 2;
-  ctx.beginPath();
+  path.addPath(
+    new Path2D(d),
+    new DOMMatrix().translateSelf(c - side / 2, c - side / 2).scaleSelf(side / 12),
+  );
+}
+
+function shapePath(shape: Shape, r: number): Path2D {
+  const c = SIZE / 2;
+  const path = new Path2D();
   switch (shape) {
     case "circle":
-      ctx.arc(c, c, r, 0, Math.PI * 2);
+      path.arc(c, c, r, 0, Math.PI * 2);
       break;
-    case "triangle": {
-      const h = r * 1.15;
-      ctx.moveTo(c, c - h);
-      ctx.lineTo(c + h * 0.92, c + h * 0.72);
-      ctx.lineTo(c - h * 0.92, c + h * 0.72);
+    case "volcano":
+      boxed(path, VOLCANO_PATH, r * 2.4);
       break;
-    }
     case "diamond":
-      ctx.moveTo(c, c - r * 1.2);
-      ctx.lineTo(c + r * 1.2, c);
-      ctx.lineTo(c, c + r * 1.2);
-      ctx.lineTo(c - r * 1.2, c);
+      path.moveTo(c, c - r * 1.2);
+      path.lineTo(c + r * 1.2, c);
+      path.lineTo(c, c + r * 1.2);
+      path.lineTo(c - r * 1.2, c);
+      break;
+    case "flame":
+      // The silhouette tapers, so it needs more box than a solid shape to read.
+      boxed(path, FLAME_PATH, r * 2.3);
       break;
   }
-  ctx.closePath();
+  path.closePath();
+  return path;
 }
 
 /**
@@ -46,19 +56,18 @@ export function registerIcons(map: MapLibreMap): void {
 
       const fill = SEVERITY_COLOURS[severity - 1] ?? SEVERITY_COLOURS[0];
       const radius = 8 + severity * 1.1;
+      const path = shapePath(shape, radius);
 
       ctx.shadowColor = fill;
       ctx.shadowBlur = 14;
-      drawShape(ctx, shape, radius);
       ctx.fillStyle = `${fill}cc`;
-      ctx.fill();
+      ctx.fill(path);
 
       ctx.shadowBlur = 0;
-      drawShape(ctx, shape, radius);
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#ffffff";
       ctx.globalAlpha = 0.92;
-      ctx.stroke();
+      ctx.stroke(path);
 
       map.addImage(name, ctx.getImageData(0, 0, SIZE, SIZE), { pixelRatio: 2 });
     }

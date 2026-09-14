@@ -1,5 +1,6 @@
 import type { NotificationRecord } from "../api/types";
-import { utcTime } from "./format";
+import { useTimeZone } from "../state/timeZone";
+import { timeIn } from "./format";
 
 interface Props {
   notifications: NotificationRecord[];
@@ -16,6 +17,7 @@ export function NotificationFeed({
   onSelect,
   onMarkRead,
 }: Props): React.JSX.Element {
+  const { zone } = useTimeZone();
   return (
     <section className="panel glass grow">
       <header className="panel-head">
@@ -42,7 +44,7 @@ export function NotificationFeed({
                 <span className="alert-body">{notification.body}</span>
                 <div className="alert-foot">
                   <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>
-                    {utcTime(notification.createdAt)} · {notification.alertType}
+                    {timeIn(zone, notification.createdAt)} · {notification.alertType}
                   </span>
                   <span style={{ display: "flex", gap: 5 }}>
                     <button

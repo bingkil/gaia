@@ -57,11 +57,21 @@ export function framesAt(
     if (timeMs - props.validTimeMs > MAX_FRAME_AGE_MS) continue;
 
     const current = bestByEvent.get(props.eventId);
-    const currentTime = current
-      ? (current.properties as unknown as FrameFeatureProperties).validTimeMs
-      : -Infinity;
+    if (!current) {
+      bestByEvent.set(props.eventId, feature);
+      continue;
+    }
 
-    if (props.validTimeMs > currentTime) bestByEvent.set(props.eventId, feature);
+    const currentProps = current.properties as unknown as FrameFeatureProperties;
+    // An observation and a forecast can carry the same valid time, so the tie
+    // is resolved towards what was actually seen rather than by source order.
+    const better =
+      props.validTimeMs > currentProps.validTimeMs ||
+      (props.validTimeMs === currentProps.validTimeMs &&
+        props.frameKind === "OBSERVED" &&
+        currentProps.frameKind !== "OBSERVED");
+
+    if (better) bestByEvent.set(props.eventId, feature);
   }
 
   return { type: "FeatureCollection", features: [...bestByEvent.values()] };

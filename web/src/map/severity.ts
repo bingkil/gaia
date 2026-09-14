@@ -15,12 +15,36 @@ export const SEVERITY_COLOURS = [
 ] as const;
 
 export type Severity = 1 | 2 | 3 | 4 | 5;
-export type Shape = "circle" | "triangle" | "diamond";
+export type Shape = "circle" | "volcano" | "diamond" | "flame";
 
-export const SHAPE_BY_HAZARD: Record<HazardType, Shape> = {
+/**
+ * Flame silhouette on a 12x12 box, shared by the map canvas and the list SVG.
+ * A symmetric teardrop reads as water at marker size, so the tip leans right
+ * and a second tongue rises on the left to break the droplet silhouette.
+ */
+export const FLAME_PATH =
+  "M7.0 0.4 C7.3 2.3 8.4 3.2 9.2 4.4 C10.2 5.9 10.0 8.2 8.6 9.7 " +
+  "C7.2 11.2 4.6 11.5 2.9 10.2 C1.3 9.0 0.9 6.7 1.9 5.0 " +
+  "C2.4 4.2 3.1 3.7 3.8 3.0 C3.7 4.3 3.9 5.2 4.4 5.9 " +
+  "C5.3 4.3 6.0 2.3 7.0 0.4 Z";
+
+/**
+ * Cone with a crater notch on a 12x12 box. The flat rim is what separates it
+ * from a plain triangle once the marker is down to a few pixels.
+ */
+export const VOLCANO_PATH = "M3 1.6 H4.9 L6 3.2 L7.1 1.6 H9 L11.7 10.4 H0.3 Z";
+
+export const SHAPE_BY_HAZARD = {
   EARTHQUAKE: "circle",
-  VOLCANO: "triangle",
+  VOLCANO: "volcano",
   ASH: "diamond",
+  WILDFIRE: "flame",
+} as const satisfies Record<HazardType, Shape>;
+
+/** Text stand-ins. The drawn shapes have no character that reads as them. */
+export const GLYPH_BY_SHAPE: Record<Exclude<Shape, "flame" | "volcano">, string> = {
+  circle: "\u25cf",
+  diamond: "\u25c6",
 };
 
 export function severityColour(severity: Severity): string {
@@ -65,6 +89,9 @@ export function severityOf(
       return alertLevelSeverity(alertLevel);
     case "ASH":
       return 4;
+    // GDACS grades a fire on the same green/orange/red scale as a volcano.
+    case "WILDFIRE":
+      return alertLevelSeverity(alertLevel);
   }
 }
 
@@ -89,6 +116,7 @@ export function decorateEventFeatures(
         properties: {
           ...props,
           severity,
+          colour: severityColour(severity),
           shape: SHAPE_BY_HAZARD[props.hazardType],
           icon: `gaia-${SHAPE_BY_HAZARD[props.hazardType]}-${severity}`,
           retracted: props.state === "RETRACTED",

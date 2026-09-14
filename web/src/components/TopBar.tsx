@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { api } from "../api/client";
 import type { RealtimeStatus } from "../api/realtime";
 import type { Filters } from "../state/useGaiaData";
 
@@ -10,6 +12,10 @@ interface Props {
   onPickMode: (on: boolean) => void;
   hasLocation: boolean;
   onUseMyLocation: () => void;
+  aerial: boolean;
+  onAerial: (on: boolean) => void;
+  onReload: () => void;
+  onSettings: () => void;
 }
 
 const HAZARDS = [
@@ -17,6 +23,7 @@ const HAZARDS = [
   { value: "EARTHQUAKE", label: "Quake" },
   { value: "VOLCANO", label: "Volcano" },
   { value: "ASH", label: "Ash" },
+  { value: "WILDFIRE", label: "Fire" },
 ];
 
 const STATUS_TEXT: Record<RealtimeStatus, string> = {
@@ -34,10 +41,43 @@ export function TopBar({
   onPickMode,
   hasLocation,
   onUseMyLocation,
+  aerial,
+  onAerial,
+  onReload,
+  onSettings,
 }: Props): React.JSX.Element {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+
+  // Two different things behind one button: ask the pollers to fetch now, and
+  // re-read what the server already has. Only the first can fail.
+  const refresh = async (): Promise<void> => {
+    setRefreshing(true);
+    setRefreshNote(null);
+    try {
+      const { results } = await api.refreshProviders();
+      const cooling = results.filter((result) => result.status === "COOLING_DOWN");
+      const requested = results.filter((result) => result.status === "REQUESTED");
+      setRefreshNote(
+        requested.length > 0
+          ? `Polling ${requested.length}`
+          : cooling.length > 0
+            ? `Wait ${Math.ceil(Math.max(...cooling.map((r) => r.retryAfterSeconds ?? 0)))}s`
+            : "Nothing to poll",
+      );
+    } catch {
+      setRefreshNote("Refresh failed");
+    } finally {
+      onReload();
+      setRefreshing(false);
+      setTimeout(() => setRefreshNote(null), 4000);
+    }
+  };
+
   return (
     <header className="topbar glass">
       <div className="brand">
+        <img className="brand-mark" src="/gaia-logo.png" alt="" width={26} height={26} />
         <b>GAIA</b>
         <span>Geohazard Awareness, Impact &amp; Alerting</span>
       </div>
@@ -87,6 +127,15 @@ export function TopBar({
       <button className="btn" onClick={onUseMyLocation} type="button">
         Use my position
       </button>
+      <button
+        className={`btn ${aerial ? "on" : ""}`}
+        onClick={() => onAerial(!aerial)}
+        type="button"
+        aria-pressed={aerial}
+        title="Swap the dark basemap for satellite imagery"
+      >
+        Aerial
+      </button>
 
       {unread > 0 ? <span className="tag">{unread} new</span> : null}
 
@@ -94,6 +143,20 @@ export function TopBar({
         <i className={`dot ${status} ${status === "live" ? "pulse" : ""}`} />
         {STATUS_TEXT[status]}
       </span>
+
+      {refreshNote ? <span className="tag">{refreshNote}</span> : null}
+      <button
+        className="btn"
+        onClick={() => void refresh()}
+        disabled={refreshing}
+        type="button"
+        title="Ask every feed to poll now, then re-read the data"
+      >
+        ⟳
+      </button>
+      <button className="btn" onClick={onSettings} type="button" title="Settings">
+        ⚙
+      </button>
     </header>
   );
 }

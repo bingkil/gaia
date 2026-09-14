@@ -74,6 +74,9 @@ class EventSummary(BaseModel):
     volcano_name: str | None = None
     alert_level: str | None = None
     tsunami: bool | None = None
+    # Satellite fire clusters only: how many detections, and their peak power.
+    detection_count: int | None = None
+    max_frp_mw: float | None = None
 
 
 class HazardEvent(BaseModel):

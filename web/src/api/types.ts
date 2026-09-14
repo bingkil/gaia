@@ -1,4 +1,4 @@
-export type HazardType = "EARTHQUAKE" | "VOLCANO" | "ASH";
+export type HazardType = "EARTHQUAKE" | "VOLCANO" | "ASH" | "WILDFIRE";
 
 export type EventState =
   | "DETECTED"
@@ -53,6 +53,8 @@ export interface EventSummary {
   volcano_name: string | null;
   alert_level: string | null;
   tsunami: boolean | null;
+  detection_count: number | null;
+  max_frp_mw: number | null;
 }
 
 export interface SourceRef {
@@ -118,6 +120,8 @@ export interface EventFeatureProperties {
   volcanoName: string | null;
   alertLevel: string | null;
   tsunami: boolean | null;
+  detectionCount: number | null;
+  maxFrpMw: number | null;
   originTime: string | null;
   originTimeMs: number | null;
   lastUpdatedAt: string | null;
@@ -193,6 +197,39 @@ export interface ProviderRecord {
   messagesTotal: number;
   lastError: string | null;
   attribution: string | null;
+}
+
+export interface RefreshResult {
+  provider: string;
+  status: "REQUESTED" | "COOLING_DOWN" | "NOT_APPLICABLE" | string;
+  retryAfterSeconds?: number;
+}
+
+export interface ProviderSetting {
+  provider: string;
+  key: string;
+  enabled: boolean;
+  mode: "POLL" | "STREAM";
+  pollSeconds: number | null;
+  staleAfterSeconds: number;
+  envPrefix: string;
+  attribution: string | null;
+}
+
+export interface FirmsKeyStatus {
+  configured: boolean;
+  /** Masked tail only. The key itself never leaves the server. */
+  hint: string | null;
+  fromEnvironment: boolean;
+  enabled: boolean;
+}
+
+export interface SettingsResponse {
+  providers: ProviderSetting[];
+  ingestEnabled: boolean;
+  manualPollMinSeconds: number;
+  dataDir: string;
+  firmsKey: FirmsKeyStatus;
 }
 
 export interface NotificationRecord {

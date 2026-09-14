@@ -74,7 +74,7 @@ def classify_provenance(
         reasons.append("SINGLE_SOURCE")
         return ProvenanceClass.SINGLE_SOURCE_RAPID, reasons
 
-    # Volcanic: a satellite heat signal alone is only an automated signal.
+    # Volcanic or fire: a satellite heat signal alone is only an automated signal.
     if providers == {"FIRMS"}:
         reasons.append("THERMAL_SIGNAL_ONLY")
         return ProvenanceClass.AUTOMATED_SIGNAL, reasons
@@ -119,6 +119,15 @@ def derive_state(
 ) -> EventState:
     if any(o.action in (Action.DELETE, Action.CANCEL) for o in observations):
         return EventState.RETRACTED
+
+    # A feed reporting its own event as finished ends it. Retraction means it
+    # never happened; ending means it is over, and the two must not be merged.
+    if observations[-1].normalized.get("ended"):
+        if previous is None:
+            return EventState.ENDED
+        if previous == EventState.RETRACTED:
+            return EventState.RETRACTED
+        return EventState.ENDED if can_transition(previous, EventState.ENDED) else previous
 
     reviewed = any(o.normalized.get("reviewed") for o in observations)
     multisource = provenance == ProvenanceClass.MULTISOURCE_RAPID

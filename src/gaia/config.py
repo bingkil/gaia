@@ -53,10 +53,12 @@ class GdacsSettings(ProviderSettings):
 
 class FirmsSettings(ProviderSettings):
     base_url: str = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-    # Set GAIA_FIRMS__MAP_KEY in the environment to enable. Free key from NASA FIRMS.
+    # Set GAIA_PROVIDERS__FIRMS__MAP_KEY in the environment. Free key from NASA FIRMS.
     map_key: str = ""
+    # Two satellites, because agreement between them is what promotes a fire.
+    # Suomi NPP delivery ends 2026-11-01, so NOAA-21 is the second one.
     products: list[str] = Field(
-        default_factory=lambda: ["VIIRS_NOAA20_NRT", "VIIRS_SNPP_NRT"]
+        default_factory=lambda: ["VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"]
     )
     poll_seconds: float = 1800.0
     day_range: int = 1

@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Meta } from "../api/types";
-import { SEVERITY_COLOURS } from "../map/severity";
+import { FLAME_PATH, SEVERITY_COLOURS, VOLCANO_PATH } from "../map/severity";
+import { PROVENANCE_MARKS, PROVENANCE_ORDER, ProvenanceTag } from "./ProvenanceBadge";
 
-const SEVERITY_LABELS = ["M <3", "M 3–4.5", "M 4.5–6", "M 6–7", "M 7+"];
+/** One row per ramp step, read against whichever hazard's column applies. */
+const SEVERITY_SCALE = [
+  { quake: "M <3", volcano: "—", ash: "—", fire: "—" },
+  { quake: "M 3–4.5", volcano: "GREEN or none", ash: "—", fire: "satellite only" },
+  { quake: "M 4.5–6", volcano: "YELLOW", ash: "—", fire: "YELLOW" },
+  { quake: "M 6–7", volcano: "ORANGE", ash: "always", fire: "ORANGE" },
+  { quake: "M 7+", volcano: "RED", ash: "—", fire: "RED" },
+];
 
 export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
   const [open, setOpen] = useState(true);
@@ -18,28 +26,40 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
 
       {open ? (
         <div className="panel-body pad">
-          {SEVERITY_COLOURS.map((colour, index) => (
-            <div className="legend-row" key={colour}>
-              <i
-                className="legend-swatch"
-                style={{ background: colour, borderRadius: "50%" }}
-              />
-              {SEVERITY_LABELS[index]}
-            </div>
-          ))}
+          <div className="legend-scale">
+            <span />
+            <span className="legend-scale-head">● quake</span>
+            <span className="legend-scale-head">
+              <svg className="legend-glyph" viewBox="0 0 12 12" aria-hidden="true">
+                <path d={VOLCANO_PATH} fill="currentColor" />
+              </svg>
+              volcano
+            </span>
+            <span className="legend-scale-head">◆ ash</span>
+            <span className="legend-scale-head">
+              <svg className="legend-glyph" viewBox="0 0 12 12" aria-hidden="true">
+                <path d={FLAME_PATH} fill="currentColor" />
+              </svg>
+              fire
+            </span>
+            {SEVERITY_COLOURS.map((colour, index) => (
+              <Fragment key={colour}>
+                <i className="legend-swatch" style={{ background: colour, borderRadius: "50%" }} />
+                <span>{SEVERITY_SCALE[index]?.quake}</span>
+                <span>{SEVERITY_SCALE[index]?.volcano}</span>
+                <span>{SEVERITY_SCALE[index]?.ash}</span>
+                <span>{SEVERITY_SCALE[index]?.fire}</span>
+              </Fragment>
+            ))}
+          </div>
+          <p className="legend-note">
+            A step is a rank on that hazard&rsquo;s own scale, so the same colour across two
+            shapes is not the same danger. A volcano&rsquo;s swatch is this ranking, not the
+            agency&rsquo;s own colour code — an agency RED is drawn magenta here. Ash is always
+            drawn at step 4; that is a placeholder, not a measurement. A fire at step 2 carries no
+            agency grading at all: it is a cluster of satellite heat, not a declared emergency.
+          </p>
 
-          <div className="legend-row" style={{ marginTop: 6 }}>
-            <span className="legend-swatch" style={{ textAlign: "center" }}>
-              ▲
-            </span>
-            Volcano
-          </div>
-          <div className="legend-row">
-            <span className="legend-swatch" style={{ textAlign: "center" }}>
-              ◆
-            </span>
-            Ash
-          </div>
           <div className="legend-row">
             <i className="legend-swatch" style={{ background: "#b388ff", opacity: 0.6 }} />
             Ash observed
@@ -59,6 +79,19 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
             <i className="legend-swatch" style={{ border: "2px solid #f2681c" }} />
             S wavefront (modelled)
           </div>
+
+          <div className="panel-title" style={{ margin: "12px 0 6px" }}>
+            How well backed
+          </div>
+          {PROVENANCE_ORDER.map((provenanceClass) => (
+            <div className="legend-row" key={provenanceClass}>
+              <ProvenanceTag
+                provenanceClass={provenanceClass}
+                label={PROVENANCE_MARKS[provenanceClass].meaning}
+              />
+              <span>{PROVENANCE_MARKS[provenanceClass].meaning}</span>
+            </div>
+          ))}
 
           {meta ? (
             <p className="disclaimer" style={{ padding: "10px 0 0" }}>

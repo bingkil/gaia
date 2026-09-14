@@ -175,6 +175,11 @@ textarea {
   align-items: baseline;
   gap: 9px;
 }
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  align-self: center;
+}
 .brand b {
   font-size: 17px;
   letter-spacing: 0.28em;
@@ -258,7 +263,7 @@ input[type="range"] {
 
 .event-row {
   display: grid;
-  grid-template-columns: 30px 1fr auto;
+  grid-template-columns: 42px 1fr auto;
   gap: 9px;
   align-items: center;
   padding: 8px 12px;
@@ -284,8 +289,16 @@ input[type="range"] {
   font-family: var(--mono);
   font-size: 15px;
   font-weight: 600;
-  text-align: right;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.hazard-icon {
+  width: 11px;
+  height: 11px;
+  flex: none;
 }
 .event-place {
   font-size: 12px;
@@ -307,38 +320,75 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.range-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 8px;
+  flex-wrap: wrap;
+}
+.date-input {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg);
+  background: var(--solid-bg-raised);
+  border: 1px solid var(--solid-border);
+  border-radius: 3px;
+  padding: 3px 5px;
+  color-scheme: dark;
+}
+
 /* ---------- provenance ---------- */
 
 .provenance {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
+  padding: 3px 7px;
   border-radius: 3px;
+  font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   background: var(--solid-bg-raised);
   border: 1px solid var(--solid-border);
-  border-left-width: 3px;
-  color: var(--fg);
+  color: var(--fg-dim);
   white-space: nowrap;
 }
-.provenance.AUTHORITATIVE_EEW,
+.provenance-glyph {
+  font-size: 12px;
+  line-height: 1;
+}
+.provenance.compact {
+  gap: 0;
+  padding: 2px 5px;
+}
+
+/* Strength is luminance, never hue: hue already means magnitude. */
+.provenance.AUTHORITATIVE_EEW {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg-void);
+}
 .provenance.AUTHORITATIVE_NOTICE {
-  border-left-color: var(--sev-5);
+  color: var(--fg);
+  border-color: var(--fg-dim);
 }
 .provenance.MULTISOURCE_RAPID {
-  border-left-color: var(--sev-3);
+  color: var(--fg);
 }
 .provenance.SINGLE_SOURCE_RAPID {
-  border-left-color: var(--sev-2);
+  color: var(--fg-dim);
 }
 .provenance.AUTOMATED_SIGNAL,
 .provenance.MODEL_ESTIMATE {
-  border-left-color: var(--fg-faint);
-  color: var(--fg-dim);
+  color: var(--fg-faint);
+}
+
+.legend-row .provenance {
+  min-width: 76px;
+  justify-content: center;
+  flex: none;
 }
 
 /* ---------- status dots ---------- */
@@ -514,6 +564,82 @@ input[type="range"] {
   gap: 8px;
   padding: 3px 0;
   font-size: 10px;
+  color: var(--fg-dim);
+}
+.legend-scale {
+  display: grid;
+  grid-template-columns: 13px repeat(4, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.legend-scale-head {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.legend-glyph {
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+.legend-note {
+  margin: 8px 0 10px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--fg-faint);
+}
+
+/* ---------- settings modal ---------- */
+/* Opaque tier: the modal carries configuration text, not decoration. */
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgb(4 7 12 / 62%);
+}
+.modal {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(78vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--solid-border);
+  border-radius: 6px;
+}
+.modal-body {
+  overflow: hidden auto;
+  padding: 12px 14px 14px;
+}
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.settings-table th {
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  font-weight: 500;
+  padding: 4px 0;
+}
+.settings-table td {
+  padding: 4px 0;
+  color: var(--fg-dim);
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+.settings-table td:first-child {
+  color: var(--fg);
+}
+.modal code {
+  font-family: var(--mono);
   color: var(--fg-dim);
 }
 .legend-swatch {

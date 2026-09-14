@@ -6,7 +6,7 @@ client never has to infer them. Spec section 15.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
@@ -24,7 +24,8 @@ from ..domain.enums import (
 from ..domain.geo import circle_geojson, point_geojson
 from ..domain.models import HazardEvent, WatchArea
 from ..engine.impact import ash_impact, earthquake_impact
-from ..runtime import Runtime
+from ..providers import ADAPTERS, StreamingAdapter
+from ..runtime import MANUAL_POLL_MIN_SECONDS, Runtime
 from ..store import (
     AdvisoryRepo,
     EventRepo,
@@ -45,6 +46,33 @@ def _data_age(event: HazardEvent) -> float | None:
     if event.last_updated_at is None:
         return None
     return round((utcnow() - event.last_updated_at).total_seconds(), 1)
+
+
+def time_range(
+    runtime: Runtime,
+    since_hours: float | None,
+    since: str | None,
+    until: str | None,
+) -> tuple[datetime, datetime | None]:
+    """Resolve the window shared by the list and the map, so they cannot drift."""
+    if since is not None:
+        parsed = from_iso(since)
+        if parsed is None:
+            raise HTTPException(400, "since must be an ISO timestamp")
+        start = parsed
+    else:
+        hours = since_hours if since_hours is not None else runtime.settings.active_window_hours
+        start = utcnow() - timedelta(hours=hours)
+
+    end = None
+    if until is not None:
+        end = from_iso(until)
+        if end is None:
+            raise HTTPException(400, "until must be an ISO timestamp")
+        if end < start:
+            raise HTTPException(400, "until must not precede since")
+
+    return start, end
 
 
 def event_payload(event: HazardEvent) -> dict[str, Any]:
@@ -92,6 +120,8 @@ async def list_events(
     bbox: str | None = None,
     minMagnitude: float | None = None,
     sinceHours: float | None = None,
+    since: str | None = None,
+    until: str | None = None,
     limit: int = Query(500, le=2000),
 ) -> dict[str, Any]:
     runtime = runtime_of(request)
@@ -99,8 +129,7 @@ async def list_events(
 
     hazards = [HazardType(h) for h in hazardType.split(",")] if hazardType else None
     states = [EventState(s) for s in state.split(",")] if state else None
-    window = sinceHours if sinceHours is not None else runtime.settings.active_window_hours
-    since = utcnow() - timedelta(hours=window)
+    since_at, until_at = time_range(runtime, sinceHours, since, until)
 
     box = None
     if bbox:
@@ -112,7 +141,8 @@ async def list_events(
     events = repo.list_events(
         hazard_types=hazards,
         states=states,
-        since=since,
+        since=since_at,
+        until=until_at,
         bbox=box,
         min_magnitude=minMagnitude,
         limit=limit,
@@ -187,13 +217,20 @@ async def map_events(
     request: Request,
     hazardType: str | None = None,
     minMagnitude: float | None = None,
+    sinceHours: float | None = None,
+    since: str | None = None,
+    until: str | None = None,
 ) -> dict[str, Any]:
     runtime = runtime_of(request)
     hazards = [HazardType(h) for h in hazardType.split(",")] if hazardType else None
-    since = utcnow() - timedelta(hours=runtime.settings.active_window_hours)
+    since_at, until_at = time_range(runtime, sinceHours, since, until)
 
     events = EventRepo(runtime.db).list_events(
-        hazard_types=hazards, since=since, min_magnitude=minMagnitude, limit=2000
+        hazard_types=hazards,
+        since=since_at,
+        until=until_at,
+        min_magnitude=minMagnitude,
+        limit=2000,
     )
 
     features = []
@@ -217,6 +254,8 @@ async def map_events(
                     "volcanoName": event.summary.volcano_name,
                     "alertLevel": event.summary.alert_level,
                     "tsunami": event.summary.tsunami,
+                    "detectionCount": event.summary.detection_count,
+                    "maxFrpMw": event.summary.max_frp_mw,
                     "originTime": to_iso(event.origin_time),
                     "originTimeMs": (
                         event.origin_time.timestamp() * 1000 if event.origin_time else None
@@ -263,9 +302,7 @@ async def map_frames(request: Request, eventId: str | None = None) -> dict[str, 
                     "source": frame.source_provider,
                     "sourceRef": frame.source_ref,
                     "styleClass": (
-                        "ash-observed"
-                        if frame.frame_kind.value == "OBSERVED"
-                        else "ash-forecast"
+                        "ash-observed" if frame.frame_kind.value == "OBSERVED" else "ash-forecast"
                     ),
                     **frame.properties,
                 },
@@ -502,6 +539,74 @@ async def ingest_vaa(
         "frameCount": len(frames),
         "parserWarnings": advisories[0]["parserWarnings"] if advisories else [],
     }
+
+
+@router.post("/providers/refresh")
+async def refresh_providers(
+    request: Request, provider: str | None = Body(None, embed=True)
+) -> dict[str, Any]:
+    """Ask the pollers to fetch now instead of waiting for their next tick."""
+    results = runtime_of(request).refresh(provider)
+    return {"results": results, "requestedAt": to_iso(utcnow())}
+
+
+@router.get("/settings")
+async def read_settings(request: Request) -> dict[str, Any]:
+    """Expose the effective ingestion configuration and how to change it.
+
+    Read-only on purpose: cadence belongs to the process that owns the
+    connections, and a value edited here would not survive a restart.
+    """
+    runtime = runtime_of(request)
+    providers = []
+
+    for key, adapter_class in ADAPTERS.items():
+        provider_settings = getattr(runtime.settings.providers, key)
+        streaming = issubclass(adapter_class, StreamingAdapter)
+        providers.append(
+            {
+                "provider": adapter_class.name,
+                "key": key,
+                "enabled": provider_settings.enabled,
+                "mode": "STREAM" if streaming else "POLL",
+                # A stream has no cadence, and reporting the inherited default
+                # would read as one.
+                "pollSeconds": None
+                if streaming
+                else getattr(provider_settings, "poll_seconds", None),
+                "staleAfterSeconds": provider_settings.stale_after_seconds,
+                "envPrefix": f"GAIA_PROVIDERS__{key.upper()}__",
+                "attribution": getattr(provider_settings, "attribution", None),
+            }
+        )
+
+    return {
+        "providers": providers,
+        "ingestEnabled": runtime.settings.ingest_enabled,
+        "manualPollMinSeconds": MANUAL_POLL_MIN_SECONDS,
+        "dataDir": str(runtime.settings.data_dir),
+        "firmsKey": runtime.firms_key_status(),
+    }
+
+
+@router.put("/settings/firms-key")
+async def set_firms_key(request: Request, mapKey: str = Body(..., embed=True)) -> dict[str, Any]:
+    """Store the NASA FIRMS key. The value is never read back out."""
+    key = mapKey.strip()
+    if not key:
+        raise HTTPException(422, "map key is empty")
+    if len(key) > 128 or not key.isalnum():
+        raise HTTPException(422, "map key should be alphanumeric")
+
+    runtime = runtime_of(request)
+    status = await runtime.set_firms_key(key)
+    runtime.refresh("FIRMS")
+    return status
+
+
+@router.delete("/settings/firms-key")
+async def clear_firms_key(request: Request) -> dict[str, Any]:
+    return await runtime_of(request).clear_firms_key()
 
 
 @router.get("/status")

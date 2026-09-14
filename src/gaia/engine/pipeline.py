@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from datetime import timedelta
 from typing import Any
 
@@ -24,6 +25,7 @@ from ..domain.enums import (
     ProvenanceClass,
     Quality,
 )
+from ..domain.geo import haversine_km
 from ..domain.models import (
     AshAdvisory,
     AshAltitude,
@@ -62,11 +64,24 @@ from .policy import (
     should_alert,
 )
 from .volcano import ThermalCluster, classify_thermal, resolve_volcano
+from .wildfire import (
+    FIRE_CLUSTER_RADIUS_KM,
+    FIRE_FUSION_RADIUS_KM,
+    FireCluster,
+    classify_fire,
+)
 
 log = logging.getLogger(__name__)
 
 # A volcanic event stays open for this long before new activity starts a new one.
 VOLCANO_EVENT_WINDOW = timedelta(hours=72)
+
+# Fires burn for days, but GDACS keeps reporting one while it does, so the same
+# window is enough to keep a fire attached to its own event.
+WILDFIRE_EVENT_WINDOW = timedelta(hours=72)
+
+# The satellite feed is a signal, not a report, so it cannot corroborate itself.
+FIRE_SIGNAL_PROVIDER = "FIRMS"
 
 
 class Pipeline:
@@ -118,6 +133,8 @@ class Pipeline:
 
         if observation.hazard_type == HazardType.EARTHQUAKE:
             return self._process_earthquake(observation)
+        if observation.hazard_type == HazardType.WILDFIRE:
+            return self._process_wildfire(observation)
         return self._process_volcano(observation)
 
     def _process_earthquake(
@@ -145,9 +162,7 @@ class Pipeline:
         if observation.message_id not in {o.message_id for o in linked}:
             linked.append(observation)
 
-        event, changes = build_event(
-            event_id, HazardType.EARTHQUAKE, linked, previous
-        )
+        event, changes = build_event(event_id, HazardType.EARTHQUAKE, linked, previous)
         # The event row must exist before the link row references it.
         self.events.save(event, changes, DECISION_VERSION)
         self.events.link(event_id, observation.message_id, score, reasons)
@@ -183,7 +198,8 @@ class Pipeline:
     def _process_thermal(
         self, observation: Observation
     ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
-        """A thermal detection only matters once tied to a catalogued volcano."""
+        """Heat beside a catalogued volcano is volcanic; heat anywhere else is
+        a wildfire candidate rather than something to discard."""
         match = resolve_volcano(
             self.volcano_catalogue(),
             longitude=observation.longitude,
@@ -191,38 +207,16 @@ class Pipeline:
             radius_km=self.settings.providers.firms.volcano_radius_km,
         )
         if match is None:
-            return None
+            return self._process_fire_detection(observation)
 
         volcano = match.volcano
-        self.db.execute(
-            """INSERT OR REPLACE INTO thermal_anomaly
-               (id, observation_id, volcano_id, acquired_at, latitude, longitude,
-                instrument, satellite, confidence_category, frp, daynight,
-                distance_km, classification)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                new_id("thermal"),
-                observation.message_id,
-                volcano.id,
-                to_iso(observation.observed_at),
-                observation.latitude,
-                observation.longitude,
-                observation.normalized.get("instrument"),
-                observation.normalized.get("satellite"),
-                observation.normalized.get("confidence_category"),
-                observation.normalized.get("frp"),
-                observation.normalized.get("daynight"),
-                match.distance_km,
-                EruptionClassification.AUTOMATED_SIGNAL.value,
-            ),
-        )
+        self._record_thermal(observation, volcano.id, match.distance_km)
 
         cluster = self._thermal_cluster(volcano.id, match.distance_km)
         existing = self._open_volcano_event(volcano.id)
         classification, reasons = classify_thermal(
             cluster,
-            has_official_event=existing is not None
-            and "GDACS" in existing.providers,
+            has_official_event=existing is not None and "GDACS" in existing.providers,
             has_ash_advisory=existing is not None and existing.hazard_type == HazardType.ASH,
         )
 
@@ -244,6 +238,33 @@ class Pipeline:
         self.events.save(event, changes, DECISION_VERSION)
         self.events.link(event_id, observation.message_id, 0.6, reasons)
         return event, previous, changes
+
+    def _record_thermal(
+        self, observation: Observation, volcano_id: str | None, distance_km: float | None
+    ) -> None:
+        """Store the raw detection. A null volcano marks it as non-volcanic."""
+        self.db.execute(
+            """INSERT OR REPLACE INTO thermal_anomaly
+               (id, observation_id, volcano_id, acquired_at, latitude, longitude,
+                instrument, satellite, confidence_category, frp, daynight,
+                distance_km, classification)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                new_id("thermal"),
+                observation.message_id,
+                volcano_id,
+                to_iso(observation.observed_at),
+                observation.latitude,
+                observation.longitude,
+                observation.normalized.get("instrument"),
+                observation.normalized.get("satellite"),
+                observation.normalized.get("confidence_category"),
+                observation.normalized.get("frp"),
+                observation.normalized.get("daynight"),
+                distance_km,
+                EruptionClassification.AUTOMATED_SIGNAL.value,
+            ),
+        )
 
     def _thermal_cluster(self, volcano_id: str, nearest_km: float) -> ThermalCluster:
         since = to_iso(utcnow() - timedelta(hours=24))
@@ -287,6 +308,122 @@ class Pipeline:
                 return event
         return None
 
+    def _process_wildfire(
+        self, observation: Observation
+    ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
+        existing = self.events.find_by_source(observation.provider, observation.source_id)
+
+        # Falling back to position is what lets an official fire adopt the
+        # thermal cluster that was already standing in for it.
+        if existing is None and observation.longitude is not None:
+            existing = self._open_wildfire_event(observation.longitude, observation.latitude)
+
+        previous = existing
+        event_id = existing.id if existing else new_id("evt")
+
+        linked = self.observations.for_event(event_id) if existing else []
+        if observation.message_id not in {o.message_id for o in linked}:
+            linked.append(observation)
+
+        event, changes = build_event(event_id, HazardType.WILDFIRE, linked, previous)
+        # The official feed carries no satellite statistics of its own.
+        if previous is not None:
+            event.summary.detection_count = previous.summary.detection_count
+            event.summary.max_frp_mw = previous.summary.max_frp_mw
+        self.events.save(event, changes, DECISION_VERSION)
+        self.events.link(event_id, observation.message_id, 1.0, ["WILDFIRE_IDENTITY"])
+        return event, previous, changes
+
+    def _process_fire_detection(
+        self, observation: Observation
+    ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
+        """A thermal detection with no volcano behind it. Only a cluster counts."""
+        if observation.longitude is None or observation.latitude is None:
+            return None
+
+        self._record_thermal(observation, None, None)
+
+        existing = self._open_wildfire_event(observation.longitude, observation.latitude)
+        cluster = self._fire_cluster(observation.longitude, observation.latitude)
+        # Our own satellite events must not vouch for the next one, or a single
+        # seed fire silently admits every detection within fusion range.
+        corroborated = existing is not None and any(
+            provider != FIRE_SIGNAL_PROVIDER for provider in existing.providers
+        )
+        reportable, reasons = classify_fire(cluster, has_official_event=corroborated)
+        if not reportable:
+            return None
+
+        previous = existing
+        event_id = existing.id if existing else new_id("evt")
+
+        linked = self.observations.for_event(event_id) if existing else []
+        if observation.message_id not in {o.message_id for o in linked}:
+            linked.append(observation)
+
+        event, changes = build_event(event_id, HazardType.WILDFIRE, linked, previous)
+        event.summary.detection_count = cluster.detection_count
+        event.summary.max_frp_mw = round(cluster.max_frp, 1)
+        self.events.save(event, changes, DECISION_VERSION)
+        self.events.link(event_id, observation.message_id, 0.6, reasons)
+        return event, previous, changes
+
+    def _fire_cluster(self, longitude: float, latitude: float) -> FireCluster:
+        """Non-volcanic detections near this one over the last day."""
+        since = to_iso(utcnow() - timedelta(hours=24))
+        lat_margin = FIRE_CLUSTER_RADIUS_KM / 111.0
+        # A degree of longitude shortens towards the poles. The floor stops the
+        # box widening without bound near them.
+        lon_margin = lat_margin / max(math.cos(math.radians(latitude)), 0.01)
+
+        rows = self.db.query(
+            """SELECT satellite, frp, longitude, latitude FROM thermal_anomaly
+               WHERE volcano_id IS NULL AND acquired_at >= ?
+                 AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?""",
+            (
+                since,
+                latitude - lat_margin,
+                latitude + lat_margin,
+                longitude - lon_margin,
+                longitude + lon_margin,
+            ),
+        )
+        near = [
+            row
+            for row in rows
+            if haversine_km(longitude, latitude, row["longitude"], row["latitude"])
+            <= FIRE_CLUSTER_RADIUS_KM
+        ]
+        return FireCluster(
+            detection_count=len(near),
+            distinct_satellites=len({r["satellite"] for r in near if r["satellite"]}),
+            max_frp=max((r["frp"] or 0.0 for r in near), default=0.0),
+            longitude=longitude,
+            latitude=latitude,
+        )
+
+    def _open_wildfire_event(self, longitude: float, latitude: float) -> HazardEvent | None:
+        """The nearest open fire event within corroboration range."""
+        since = to_iso(utcnow() - WILDFIRE_EVENT_WINDOW)
+        rows = self.db.query(
+            """SELECT current_payload FROM hazard_event
+               WHERE hazard_type='WILDFIRE' AND state != 'RETRACTED'
+                 AND last_updated_at >= ?
+               ORDER BY last_updated_at DESC""",
+            (since,),
+        )
+
+        best: HazardEvent | None = None
+        best_km = FIRE_FUSION_RADIUS_KM
+        for row in rows:
+            event = HazardEvent.model_validate(loads(row["current_payload"], {}))
+            if event.longitude is None or event.latitude is None:
+                continue
+            distance = haversine_km(longitude, latitude, event.longitude, event.latitude)
+            if distance <= best_km:
+                best, best_km = event, distance
+        return best
+
     async def ingest_vaa_bulletin(self, text: str, source: str = "MANUAL") -> HazardEvent | None:
         """Parse a VAA bulletin into an ash event with time-valid frames."""
         return await asyncio.to_thread(self._ingest_vaa_sync, text, source)
@@ -317,9 +454,7 @@ class Pipeline:
         # advisory is still recorded with its raw text.
         frames: list[GeometryFrame] = []
         for item in parsed["frames"]:
-            valid_time = item["valid_time"] or issue_time + timedelta(
-                hours=item["lead_hours"] or 0
-            )
+            valid_time = item["valid_time"] or issue_time + timedelta(hours=item["lead_hours"] or 0)
             frames.append(
                 GeometryFrame(
                     id=new_id("frame"),
@@ -433,9 +568,7 @@ class Pipeline:
     ) -> list[dict[str, Any]]:
         created: list[dict[str, Any]] = []
         frames = (
-            self.frames.for_event(event.id)
-            if event.hazard_type != HazardType.EARTHQUAKE
-            else []
+            self.frames.for_event(event.id) if event.hazard_type != HazardType.EARTHQUAKE else []
         )
 
         for area in self.watch_areas.all(enabled_only=True):
@@ -473,9 +606,7 @@ class Pipeline:
                 continue
 
             key = idempotency_key(event.id, alert_type, area.id, change_bucket(all_reasons))
-            title, body = compose(
-                event, area, impact, alert_type, self.settings.seismic_model
-            )
+            title, body = compose(event, area, impact, alert_type, self.settings.seismic_model)
             notification_id = new_id("notif")
 
             try:

@@ -1,4 +1,11 @@
-/** Display helpers. Times are shown in UTC because hazard data is issued in UTC. */
+/**
+ * Display helpers.
+ *
+ * Hazard data is issued in UTC and aviation products are read in UTC, so no
+ * absolute time is ever rendered without saying which zone it is in.
+ */
+
+import type { TimeZonePref } from "../state/timeZone";
 
 export function utcTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -16,6 +23,97 @@ export function utcStamp(iso: string | null | undefined): string {
 
 export function msClock(ms: number): string {
   return new Date(ms).toISOString().slice(11, 19) + "Z";
+}
+
+const localTimeFormat = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZoneName: "shortOffset",
+});
+
+const localStampFormat = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZoneName: "shortOffset",
+});
+
+function localise(value: Date, format: Intl.DateTimeFormat): string {
+  // Normalised because the locale separator varies and the offset must read
+  // as part of the time rather than as a stray token.
+  return format.format(value).replace(/,/g, "");
+}
+
+export function timeIn(zone: TimeZonePref, iso: string | null | undefined): string {
+  if (zone === "UTC") return utcTime(iso);
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return localise(date, localTimeFormat);
+}
+
+export function stampIn(zone: TimeZonePref, iso: string | null | undefined): string {
+  if (zone === "UTC") return utcStamp(iso);
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return localise(date, localStampFormat);
+}
+
+export function clockIn(zone: TimeZonePref, ms: number): string {
+  return zone === "UTC" ? msClock(ms) : localise(new Date(ms), localTimeFormat);
+}
+
+const dayKeyUtc = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const dayKeyLocal = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const localShortFormat = new Intl.DateTimeFormat("en-CA", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZoneName: "shortOffset",
+});
+
+/**
+ * List times carry their date unless they are from today, because the list
+ * spans days and a bare time reads as now. Seconds are dropped once a date is
+ * needed; the detail panel keeps full precision.
+ */
+export function eventTime(zone: TimeZonePref, iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const dayKey = zone === "UTC" ? dayKeyUtc : dayKeyLocal;
+  const day = dayKey.format(date);
+  const today = dayKey.format(new Date());
+
+  if (day === today) return timeIn(zone, iso);
+  if (day.slice(0, 4) !== today.slice(0, 4)) return stampIn(zone, iso);
+
+  if (zone === "UTC") {
+    const stamp = date.toISOString();
+    return `${stamp.slice(5, 10)} ${stamp.slice(11, 16)}Z`;
+  }
+  return localise(date, localShortFormat);
 }
 
 export function ago(seconds: number | null | undefined): string {
@@ -40,4 +138,24 @@ export function km(value: number | null | undefined): string {
 
 export function magnitudeText(magnitude: number | null | undefined): string {
   return magnitude === null || magnitude === undefined ? "—" : magnitude.toFixed(1);
+}
+
+/** Satellite detections carry no place name, so the position is the identity. */
+export function coordText(
+  longitude: number | null | undefined,
+  latitude: number | null | undefined,
+): string | null {
+  if (longitude === null || longitude === undefined) return null;
+  if (latitude === null || latitude === undefined) return null;
+  const ns = latitude >= 0 ? "N" : "S";
+  const ew = longitude >= 0 ? "E" : "W";
+  return `${Math.abs(latitude).toFixed(2)}°${ns} ${Math.abs(longitude).toFixed(2)}°${ew}`;
+}
+
+/** Peak fire radiative power, the strongest single cue that heat is a fire. */
+export function frpText(megawatts: number | null | undefined): string | null {
+  if (megawatts === null || megawatts === undefined) return null;
+  return megawatts >= 1000
+    ? `${(megawatts / 1000).toFixed(1)} GW peak`
+    : `${Math.round(megawatts)} MW peak`;
 }

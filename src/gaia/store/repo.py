@@ -154,9 +154,7 @@ class EventRepo:
             ),
         )
 
-    def link(
-        self, event_id: str, observation_id: str, score: float, reasons: list[str]
-    ) -> None:
+    def link(self, event_id: str, observation_id: str, score: float, reasons: list[str]) -> None:
         self.db.execute(
             """INSERT OR REPLACE INTO event_source_link
                (event_id, observation_id, match_score, match_reasons)
@@ -202,6 +200,7 @@ class EventRepo:
         hazard_types: list[HazardType] | None = None,
         states: list[EventState] | None = None,
         since: datetime | None = None,
+        until: datetime | None = None,
         bbox: tuple[float, float, float, float] | None = None,
         min_magnitude: float | None = None,
         limit: int = 500,
@@ -214,9 +213,21 @@ class EventRepo:
         if states:
             sql.append(f"AND state IN ({','.join('?' * len(states))})")
             params += [s.value for s in states]
-        if since:
-            sql.append("AND (origin_time >= ? OR last_updated_at >= ?)")
+        # An earthquake happened at a moment, so a window means its origin time.
+        # A volcano alert stands until it is withdrawn and its origin can be
+        # months old, so for those recency comes from the last update instead.
+        recency = "COALESCE(origin_time, last_updated_at)"
+        standing = "hazard_type <> 'EARTHQUAKE' AND state <> 'ENDED' AND last_updated_at"
+        if since and until:
+            sql.append(f"AND (({recency} BETWEEN ? AND ?) OR ({standing} BETWEEN ? AND ?))")
+            bounds = [to_iso(since), to_iso(until)]
+            params += bounds + bounds
+        elif since:
+            sql.append(f"AND ({recency} >= ? OR ({standing} >= ?))")
             params += [to_iso(since), to_iso(since)]
+        elif until:
+            sql.append(f"AND {recency} <= ?")
+            params.append(to_iso(until))
         if bbox:
             sql.append("AND longitude BETWEEN ? AND ? AND latitude BETWEEN ? AND ?")
             params += [bbox[0], bbox[2], bbox[1], bbox[3]]
@@ -377,8 +388,15 @@ class VolcanoRepo:
                     """INSERT OR REPLACE INTO volcano
                        (id, name, latitude, longitude, country, elevation_m, aliases)
                        VALUES (?,?,?,?,?,?,?)""",
-                    (v.id, v.name, v.latitude, v.longitude, v.country, v.elevation_m,
-                     dumps(v.aliases)),
+                    (
+                        v.id,
+                        v.name,
+                        v.latitude,
+                        v.longitude,
+                        v.country,
+                        v.elevation_m,
+                        dumps(v.aliases),
+                    ),
                 )
 
     def all(self) -> list[Volcano]:

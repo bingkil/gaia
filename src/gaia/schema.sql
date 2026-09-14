@@ -145,6 +145,10 @@ CREATE TABLE IF NOT EXISTS thermal_anomaly (
 
 CREATE INDEX IF NOT EXISTS thermal_volcano_idx ON thermal_anomaly (volcano_id, acquired_at DESC);
 
+-- Non-volcanic detections are clustered by position instead of by volcano.
+CREATE INDEX IF NOT EXISTS thermal_position_idx
+    ON thermal_anomaly (acquired_at DESC, longitude, latitude);
+
 -- Single local user: no user_id column. Spec section 17 privacy concerns are
 -- largely satisfied by the data never leaving this machine.
 CREATE TABLE IF NOT EXISTS watch_area (
