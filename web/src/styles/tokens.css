@@ -1,0 +1,53 @@
+/*
+ * Two surface tiers.
+ *
+ * Glass is for chrome: panels, lists, legends. Solid is for anything the
+ * safety-language rules govern — provenance labels, alert banners, arrival
+ * intervals — because text that must be read is never placed on a blur.
+ *
+ * Green is reserved for chrome. It never encodes hazard state, because there
+ * is no data here that can tell anyone they are safe.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg-void: #04070c;
+  --bg-deep: #070c14;
+
+  --glass-bg: rgba(13, 22, 35, 0.55);
+  --glass-bg-strong: rgba(13, 22, 35, 0.74);
+  --glass-border: rgba(125, 198, 255, 0.16);
+  --glass-border-bright: rgba(125, 198, 255, 0.34);
+  --glass-blur: 18px;
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+
+  --solid-bg: #0c1420;
+  --solid-bg-raised: #131e2e;
+  --solid-border: rgba(255, 255, 255, 0.2);
+
+  --fg: #e8f1ff;
+  --fg-dim: #93a8c4;
+  --fg-faint: #5f7391;
+
+  /* Severity ramp. Blue to magenta, no green, monotonic lightness, so it
+     survives deuteranopia and protanopia. Shape cues carry the same signal. */
+  --sev-1: #4361ee;
+  --sev-2: #00a5d4;
+  --sev-3: #f0b429;
+  --sev-4: #f2681c;
+  --sev-5: #e8336d;
+
+  --ash-observed: #b388ff;
+  --ash-forecast: #6c5ce7;
+
+  --accent: #45d9c0;
+  --accent-dim: rgba(69, 217, 192, 0.18);
+
+  --warn: #f0b429;
+  --danger: #e8336d;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, monospace;
+}

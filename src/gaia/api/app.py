@@ -7,6 +7,7 @@ built frontend.
 from __future__ import annotations
 
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,6 +23,10 @@ from . import realtime, routes
 log = logging.getLogger(__name__)
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+
+# Chrome refuses a module worker served as application/octet-stream, which is
+# what Python guesses for .mjs, and the failure is silent.
+mimetypes.add_type("text/javascript", ".mjs")
 
 
 def create_app(settings: Settings | None = None, start_ingestion: bool = True) -> FastAPI:

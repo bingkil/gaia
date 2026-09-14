@@ -1,0 +1,590 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- surface tiers ---------- */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+}
+
+/*
+ * Safety copy tier. Opaque by design: a provenance label or an arrival
+ * interval must never depend on what happens to be behind it.
+ */
+.solid {
+  background: var(--solid-bg);
+  border: 1px solid var(--solid-border);
+  border-radius: var(--radius);
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 340px 1fr 330px;
+  grid-template-rows: 52px 1fr 74px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left   map    right"
+    "left   clock  right";
+  height: 100%;
+  gap: 10px;
+  padding: 10px;
+  position: relative;
+}
+
+.app.no-left {
+  grid-template-columns: 0 1fr 330px;
+}
+.app.no-right {
+  grid-template-columns: 340px 1fr 0;
+}
+.app.no-left.no-right {
+  grid-template-columns: 0 1fr 0;
+}
+
+.map-root {
+  grid-area: map;
+  grid-row: 2 / 4;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.app > *:not(.map-root) {
+  z-index: 1;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The primary panel takes the slack; the accessories never squeeze it out. */
+.rail > .panel {
+  flex: none;
+  max-height: 45%;
+}
+.rail > .panel.grow {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 180px;
+}
+
+.rail.left {
+  grid-area: left;
+}
+.rail.right {
+  grid-area: right;
+}
+.rail.collapsed {
+  display: none;
+}
+
+.clockbar {
+  grid-area: clock;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ---------- panels ---------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--glass-border);
+  flex: none;
+}
+
+.panel-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.panel-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+
+.panel-body.pad {
+  padding: 10px 12px;
+}
+
+/* ---------- brand ---------- */
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.brand b {
+  font-size: 17px;
+  letter-spacing: 0.28em;
+  font-weight: 700;
+}
+.brand span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+}
+
+/* ---------- controls ---------- */
+
+.btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--fg-dim);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--glass-border-bright);
+  color: var(--fg);
+}
+.btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.btn.ghost {
+  background: none;
+  border-color: transparent;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 9px;
+}
+.field label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-faint);
+}
+.field input,
+.field select,
+.field textarea {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  width: 100%;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+  width: 100%;
+}
+
+/* ---------- event list ---------- */
+
+.event-row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.event-row:hover {
+  background: rgba(125, 198, 255, 0.06);
+}
+.event-row.selected {
+  background: rgba(125, 198, 255, 0.1);
+  border-left-color: var(--accent);
+}
+.event-row.retracted {
+  opacity: 0.5;
+}
+.event-row.retracted .event-place {
+  text-decoration: line-through;
+}
+
+.event-mag {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
+  line-height: 1;
+}
+.event-place {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-meta {
+  font-size: 10px;
+  color: var(--fg-faint);
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.event-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* ---------- provenance ---------- */
+
+.provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--solid-bg-raised);
+  border: 1px solid var(--solid-border);
+  border-left-width: 3px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.provenance.AUTHORITATIVE_EEW,
+.provenance.AUTHORITATIVE_NOTICE {
+  border-left-color: var(--sev-5);
+}
+.provenance.MULTISOURCE_RAPID {
+  border-left-color: var(--sev-3);
+}
+.provenance.SINGLE_SOURCE_RAPID {
+  border-left-color: var(--sev-2);
+}
+.provenance.AUTOMATED_SIGNAL,
+.provenance.MODEL_ESTIMATE {
+  border-left-color: var(--fg-faint);
+  color: var(--fg-dim);
+}
+
+/* ---------- status dots ---------- */
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+}
+.dot.HEALTHY,
+.dot.live {
+  background: var(--accent);
+}
+.dot.DEGRADED,
+.dot.connecting {
+  background: var(--warn);
+}
+.dot.STALE,
+.dot.offline {
+  background: var(--danger);
+}
+.dot.DISABLED {
+  background: var(--fg-faint);
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- alert banner (solid tier) ---------- */
+
+.alert {
+  padding: 11px 13px;
+  border-left: 4px solid var(--sev-4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+.alert.CANCELLATION {
+  border-left-color: var(--fg-faint);
+}
+.alert.ESCALATION {
+  border-left-color: var(--danger);
+}
+.alert-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.alert-body {
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.alert-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- arrival readout ---------- */
+
+.arrival {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.arrival-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 9px;
+  align-items: baseline;
+}
+.arrival-phase {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--fg-dim);
+}
+.arrival-window {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.arrival-note {
+  font-size: 10px;
+  color: var(--fg-faint);
+  line-height: 1.5;
+}
+.arrival.passed .arrival-window {
+  color: var(--fg-faint);
+}
+
+/* ---------- misc ---------- */
+
+.kv {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  align-items: baseline;
+}
+.kv dt {
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.kv dd {
+  margin: 0;
+  font-family: var(--mono);
+  word-break: break-word;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.empty {
+  padding: 22px 14px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.disclaimer {
+  font-size: 10px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+  padding: 9px 12px;
+}
+
+.scrub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+.clock-time {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.clock-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.legend-swatch {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.panel-body::-webkit-scrollbar {
+  width: 7px;
+}
+.panel-body::-webkit-scrollbar-thumb {
+  background: rgba(125, 198, 255, 0.2);
+  border-radius: 4px;
+}
+.panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgba(4, 7, 12, 0.8) !important;
+  font-size: 9px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--fg-faint) !important;
+}
+
+/* Narrow windows: drop the rails to overlays so the map keeps its area. */
+@media (max-width: 1100px) {
+  .app {
+    grid-template-columns: 300px 1fr;
+    grid-template-areas:
+      "topbar topbar"
+      "left   map"
+      "left   clock";
+  }
+  .rail.right {
+    position: absolute;
+    top: 62px;
+    right: 10px;
+    bottom: 84px;
+    width: 320px;
+  }
+  .topbar {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "map"
+      "clock";
+  }
+  .rail.left {
+    position: absolute;
+    top: 62px;
+    left: 10px;
+    bottom: 84px;
+    width: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
