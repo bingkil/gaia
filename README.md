@@ -165,11 +165,9 @@ server and opens the app in your browser; closing the window stops it.
 
 ## Architecture
 
-See [docs/geohazard-early-warning-implementation.md](docs/geohazard-early-warning-implementation.md)
-for the full specification. This repository implements the local-first reduction of it:
-one process instead of four, SQLite instead of PostgreSQL/PostGIS, an in-process bus
-instead of NATS, and the filesystem instead of object storage. The domain model, safety
-vocabulary, provenance rules, and replay guarantees are unchanged.
+See [docs/architecture.md](docs/architecture.md) for the process topology, module map,
+and data flow: one process instead of four, SQLite instead of PostgreSQL/PostGIS, an
+in-process bus instead of NATS, and the filesystem instead of object storage.
 
 ## Legal
 
