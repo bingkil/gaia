@@ -14,6 +14,15 @@ volcanic ash, and satellite-detected wildfires. Everything runs on one machine:
 ingestion, fusion, impact modelling, the map, and alerts. No cloud services, no
 account, no data leaving the device except to query the public feeds listed below.
 
+## Download
+
+Prebuilt Windows and macOS builds are on the
+[Releases page](https://github.com/bingkil/gaia/releases/latest) — no Python or Node.js
+required. Download, unzip, and run `GAIA.exe` (Windows) or `GAIA.app` (macOS).
+
+macOS builds are unsigned: right-click the app and choose **Open** the first time, since
+Gatekeeper blocks a plain double-click on unsigned downloads.
+
 ## What it is not
 
 GAIA is **not** an earthquake early warning system. It ingests global catalogue feeds,
