@@ -5,7 +5,7 @@ import { ago, magnitudeText, utcTime } from "./format";
 interface Props {
   events: HazardEvent[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (event: HazardEvent) => void;
 }
 
 function primaryText(event: HazardEvent): string {
@@ -51,9 +51,9 @@ export function EventList({ events, selectedId, onSelect }: Props): React.JSX.El
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onClick={() => onSelect(event.id)}
+                onClick={() => onSelect(event)}
                 onKeyDown={(keyEvent) => {
-                  if (keyEvent.key === "Enter" || keyEvent.key === " ") onSelect(event.id);
+                  if (keyEvent.key === "Enter" || keyEvent.key === " ") onSelect(event);
                 }}
                 role="button"
                 tabIndex={0}

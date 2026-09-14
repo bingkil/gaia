@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
+import type { HazardEvent } from "./api/types";
 import { ClockBar } from "./components/ClockBar";
 import { EventDetail } from "./components/EventDetail";
 import { EventList } from "./components/EventList";
@@ -7,8 +8,9 @@ import { Legend } from "./components/Legend";
 import { NotificationFeed } from "./components/NotificationFeed";
 import { ProviderHealthPanel } from "./components/ProviderHealthPanel";
 import { TopBar } from "./components/TopBar";
+import { VaaIngestPanel } from "./components/VaaIngestPanel";
 import { WatchAreaPanel } from "./components/WatchAreaPanel";
-import { MapView } from "./map/MapView";
+import { type MapFocus, MapView } from "./map/MapView";
 import { useMapClock } from "./map/useMapClock";
 import { type Filters, useGaiaData } from "./state/useGaiaData";
 
@@ -31,6 +33,7 @@ function loadLocation(): Location | null {
 export function App(): React.JSX.Element {
   const [filters, setFilters] = useState<Filters>({ hazardType: "", minMagnitude: undefined });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focus, setFocus] = useState<MapFocus | null>(null);
   const [pickMode, setPickMode] = useState(false);
   const [location, setLocation] = useState<Location | null>(loadLocation);
 
@@ -40,6 +43,22 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (location) window.localStorage.setItem(LOCATION_KEY, JSON.stringify(location));
   }, [location]);
+
+  // A fresh object every time, so clicking the same row twice re-centres.
+  const onSelectEvent = useCallback((event: HazardEvent) => {
+    setSelectedId(event.id);
+    if (event.longitude !== null && event.latitude !== null) {
+      setFocus({ longitude: event.longitude, latitude: event.latitude });
+    }
+  }, []);
+
+  const onIngested = useCallback(
+    (event: HazardEvent) => {
+      onSelectEvent(event);
+      data.reloadEvents();
+    },
+    [onSelectEvent, data.reloadEvents],
+  );
 
   const onPickLocation = useCallback((longitude: number, latitude: number) => {
     setLocation({ longitude, latitude });
@@ -79,6 +98,7 @@ export function App(): React.JSX.Element {
           frames={data.frames}
           watchAreas={data.watchAreas}
           selectedId={selectedId}
+          focus={focus}
           model={model}
           clock={clock}
           onSelect={setSelectedId}
@@ -99,7 +119,7 @@ export function App(): React.JSX.Element {
       />
 
       <div className="rail left">
-        <EventList events={data.events} selectedId={selectedId} onSelect={setSelectedId} />
+        <EventList events={data.events} selectedId={selectedId} onSelect={onSelectEvent} />
         <ProviderHealthPanel providers={data.providers} />
         <Legend meta={data.meta} />
       </div>
@@ -124,6 +144,7 @@ export function App(): React.JSX.Element {
           location={location}
           onChanged={data.reloadWatchAreas}
         />
+        <VaaIngestPanel onIngested={onIngested} />
       </div>
 
       <ClockBar clock={clock} />

@@ -1,8 +1,15 @@
-import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl } from "maplibre-gl";
+import {
+  Map as MapLibreMap,
+  NavigationControl,
+  Popup,
+  ScaleControl,
+  setWorkerUrl,
+} from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import type { EventFeatureProperties, SeismicModel, WatchArea } from "../api/types";
+import { ago, magnitudeText } from "../components/format";
 import { circlePolygon, framesAt, surfaceWaveRadiusKm } from "./geometry";
 import { registerIcons } from "./icons";
 import {
@@ -15,6 +22,7 @@ import {
   addLayers,
   setData,
 } from "./layers";
+import { severityColour, severityOf } from "./severity";
 import type { MapClock } from "./useMapClock";
 
 const BASEMAP = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
@@ -29,16 +37,82 @@ const WAVEFRONT_MAX_RADIUS_KM = 3000;
 /** A wave ring moves a few km per frame; 10 Hz is indistinguishable from 60. */
 const ANIMATION_INTERVAL_MS = 100;
 
+/** Close enough to read the shape of a coastline without losing context. */
+const FOCUS_ZOOM = 5.5;
+
+export interface MapFocus {
+  longitude: number;
+  latitude: number;
+}
+
 interface Props {
   events: GeoJSON.FeatureCollection;
   frames: GeoJSON.FeatureCollection | null;
   watchAreas: WatchArea[];
   selectedId: string | null;
+  focus: MapFocus | null;
   model: SeismicModel;
   clock: MapClock;
   onSelect: (eventId: string) => void;
   onPickLocation: (lon: number, lat: number) => void;
   pickMode: boolean;
+}
+
+/**
+ * Built as DOM rather than HTML: place names come from upstream feeds, so they
+ * are never parsed as markup.
+ */
+function tooltipContent(props: EventFeatureProperties): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "map-tip-body";
+
+  const head = document.createElement("div");
+  head.className = "map-tip-head";
+
+  const mark = document.createElement("span");
+  mark.className = "map-tip-mark";
+  mark.style.color = severityColour(
+    severityOf(props.hazardType, props.magnitude, props.alertLevel),
+  );
+  mark.textContent =
+    props.hazardType === "EARTHQUAKE"
+      ? `M ${magnitudeText(props.magnitude)}`
+      : props.hazardType === "VOLCANO"
+        ? "▲"
+        : "◆";
+  head.append(mark);
+
+  const title = document.createElement("span");
+  title.className = "map-tip-title";
+  title.textContent = props.volcanoName ?? props.place ?? "Unknown region";
+  head.append(title);
+  root.append(head);
+
+  const label = document.createElement("div");
+  label.className = `provenance ${props.provenanceClass}`;
+  label.textContent = props.label;
+  root.append(label);
+
+  const meta = document.createElement("div");
+  meta.className = "map-tip-meta";
+  // The source strips null properties, so absent and null both arrive as undefined.
+  meta.textContent = [
+    typeof props.depthKm === "number" ? `${Math.round(props.depthKm)} km deep` : null,
+    props.alertLevel,
+    ago(props.dataAgeSeconds),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  root.append(meta);
+
+  if (props.state === "RETRACTED") {
+    const retracted = document.createElement("div");
+    retracted.className = "map-tip-retracted";
+    retracted.textContent = "Retracted by the source";
+    root.append(retracted);
+  }
+
+  return root;
 }
 
 function wavefrontFeatures(
@@ -155,12 +229,31 @@ export function MapView(props: Props): React.JSX.Element {
       latest.current.onPickLocation(event.lngLat.lng, event.lngLat.lat);
     });
 
+    const tip = new Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 16,
+      className: "map-tip",
+      maxWidth: "260px",
+    });
+
+    map.on("mousemove", LAYER_EVENT_ICONS, (event) => {
+      if (latest.current.pickMode) return;
+      const feature = event.features?.[0];
+      if (!feature || feature.geometry.type !== "Point") return;
+      tip
+        .setLngLat(feature.geometry.coordinates as [number, number])
+        .setDOMContent(tooltipContent(feature.properties as unknown as EventFeatureProperties))
+        .addTo(map);
+    });
+
     for (const [type, cursor] of [
       ["mouseenter", "pointer"],
       ["mouseleave", ""],
     ] as const) {
       map.on(type, LAYER_EVENT_ICONS, () => {
-        map.getCanvas().style.cursor = cursor;
+        map.getCanvas().style.cursor = latest.current.pickMode ? "crosshair" : cursor;
+        if (type === "mouseleave") tip.remove();
       });
     }
 
@@ -206,10 +299,25 @@ export function MapView(props: Props): React.JSX.Element {
     return () => {
       cancelAnimationFrame(frame);
       readyRef.current = false;
+      tip.remove();
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  // A new focus object is produced per request, so re-selecting the same event
+  // re-centres. flyTo is non-essential, so prefers-reduced-motion turns it into
+  // a jump rather than a sweep.
+  useEffect(() => {
+    const map = mapRef.current;
+    const focus = props.focus;
+    if (!map || !focus) return;
+    map.flyTo({
+      center: [focus.longitude, focus.latitude],
+      zoom: Math.max(map.getZoom(), FOCUS_ZOOM),
+      speed: 1.4,
+    });
+  }, [props.focus]);
 
   useEffect(() => {
     const map = mapRef.current;

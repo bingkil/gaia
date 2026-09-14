@@ -99,7 +99,7 @@ textarea {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  overflow: hidden;
+  overflow: hidden auto;
 }
 
 /* The primary panel takes the slack; the accessories never squeeze it out. */
@@ -522,14 +522,64 @@ input[type="range"] {
   flex: none;
 }
 
-.panel-body::-webkit-scrollbar {
+/* ---------- map hover tooltip ---------- */
+
+/* Carries a provenance label, so it sits on the opaque tier, never on a blur. */
+.map-tip .maplibregl-popup-content {
+  background: var(--solid-bg-raised);
+  border: 1px solid var(--solid-border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 9px 11px;
+  color: var(--fg);
+}
+.map-tip .maplibregl-popup-tip {
+  display: none;
+}
+.map-tip {
+  pointer-events: none;
+}
+.map-tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.map-tip-mark {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  flex: none;
+}
+.map-tip-title {
+  font-size: 12px;
+  line-height: 1.3;
+}
+.map-tip-meta {
+  margin-top: 5px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--fg-dim);
+}
+.map-tip-retracted {
+  margin-top: 5px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.panel-body::-webkit-scrollbar,
+.rail::-webkit-scrollbar {
   width: 7px;
 }
-.panel-body::-webkit-scrollbar-thumb {
+.panel-body::-webkit-scrollbar-thumb,
+.rail::-webkit-scrollbar-thumb {
   background: rgba(125, 198, 255, 0.2);
   border-radius: 4px;
 }
-.panel-body::-webkit-scrollbar-track {
+.panel-body::-webkit-scrollbar-track,
+.rail::-webkit-scrollbar-track {
   background: transparent;
 }
 
