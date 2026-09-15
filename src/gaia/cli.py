@@ -22,6 +22,8 @@ def _configure_tls() -> None:
 
 
 def _configure_logging(verbose: bool) -> None:
+    from .logbuffer import BUFFER
+
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
@@ -29,6 +31,9 @@ def _configure_logging(verbose: bool) -> None:
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("websockets").setLevel(logging.WARNING)
+
+    BUFFER.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    logging.getLogger().addHandler(BUFFER)
 
 
 def cmd_init(args: argparse.Namespace) -> int:

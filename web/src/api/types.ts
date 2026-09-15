@@ -232,6 +232,18 @@ export interface SettingsResponse {
   firmsKey: FirmsKeyStatus;
 }
 
+export interface LogEntry {
+  ts: string;
+  level: string;
+  logger: string;
+  message: string;
+}
+
+export interface LogsResponse {
+  logs: LogEntry[];
+  generatedAt: string;
+}
+
 export interface NotificationRecord {
   id: string;
   eventId: string;

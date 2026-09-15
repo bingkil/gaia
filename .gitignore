@@ -20,3 +20,7 @@ web/.vite/
 
 # Local config overrides
 .env
+
+# Dev/prod server scripts: PIDs and logs for locally started processes
+.dev/
+.gaia-state/

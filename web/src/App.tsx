@@ -6,6 +6,7 @@ import { EventDetail } from "./components/EventDetail";
 import { EventList } from "./components/EventList";
 import { ImageryAgeBadge } from "./components/ImageryAgeBadge";
 import { Legend } from "./components/Legend";
+import { LogsPanel } from "./components/LogsPanel";
 import { NotificationFeed } from "./components/NotificationFeed";
 import { ProviderHealthPanel } from "./components/ProviderHealthPanel";
 import { SettingsModal } from "./components/SettingsModal";
@@ -56,6 +57,7 @@ export function App(): React.JSX.Element {
   const [inView, setInView] = useState(false);
   const [visibleIds, setVisibleIds] = useState<Set<string> | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>(loadBasemap);
   const [aerialCapture, setAerialCapture] = useState<AerialCapture | null | undefined>(undefined);
   const [location, setLocation] = useState<Location | null>(loadLocation);
@@ -175,9 +177,11 @@ export function App(): React.JSX.Element {
         imageryDate={imageryDate(filters.range)}
         onReload={data.reloadEvents}
         onSettings={() => setSettingsOpen(true)}
+        onLogs={() => setLogsOpen(true)}
       />
 
       {settingsOpen ? <SettingsModal onClose={() => setSettingsOpen(false)} /> : null}
+      {logsOpen ? <LogsPanel onClose={() => setLogsOpen(false)} /> : null}
 
       <div className="rail left">
         <EventList

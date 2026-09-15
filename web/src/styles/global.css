@@ -668,6 +668,51 @@ input[type="range"] {
   font-size: 12px;
   color: var(--fg-dim);
 }
+
+/* ---------- logs modal ---------- */
+.logs-modal {
+  width: min(860px, calc(100vw - 32px));
+}
+.logs-body {
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-line {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  border-top: 1px solid rgb(255 255 255 / 6%);
+}
+.log-line:first-child {
+  border-top: none;
+}
+.log-ts {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+}
+.log-level {
+  flex: 0 0 56px;
+  font-weight: 600;
+}
+.log-logger {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+}
+.log-message {
+  flex: 1;
+  color: var(--fg);
+}
+.log-warning .log-level {
+  color: var(--warn);
+}
+.log-error .log-level {
+  color: var(--danger);
+}
+.log-debug .log-level {
+  color: var(--fg-faint);
+}
 .legend-swatch {
   width: 13px;
   height: 13px;

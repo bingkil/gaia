@@ -4,6 +4,7 @@ import type {
   FirmsKeyStatus,
   HazardEvent,
   ImpactResponse,
+  LogsResponse,
   Meta,
   NotificationRecord,
   Observation,
@@ -154,6 +155,13 @@ export const api = {
     }),
 
   clearFirmsKey: () => request<FirmsKeyStatus>("/v1/settings/firms-key", { method: "DELETE" }),
+
+  logs: (params: { limit?: number; level?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.limit !== undefined) query.set("limit", String(params.limit));
+    if (params.level !== undefined) query.set("level", params.level);
+    return request<LogsResponse>(`/v1/logs?${query}`);
+  },
 };
 
 export { ApiError };

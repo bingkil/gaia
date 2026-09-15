@@ -6,6 +6,7 @@ client never has to infer them. Spec section 15.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -24,6 +25,7 @@ from ..domain.enums import (
 from ..domain.geo import circle_geojson, point_geojson
 from ..domain.models import HazardEvent, WatchArea
 from ..engine.impact import ash_impact, earthquake_impact
+from ..logbuffer import BUFFER
 from ..providers import ADAPTERS, StreamingAdapter
 from ..runtime import MANUAL_POLL_MIN_SECONDS, Runtime
 from ..store import (
@@ -633,3 +635,22 @@ async def clear_firms_key(request: Request) -> dict[str, Any]:
 @router.get("/status")
 async def status(request: Request) -> dict[str, Any]:
     return runtime_of(request).status()
+
+
+@router.get("/logs")
+async def logs(
+    limit: int = Query(200, le=500),
+    level: str = Query("INFO"),
+) -> dict[str, Any]:
+    """Recent log lines from this process, however it was launched.
+
+    Backed by an in-memory ring buffer rather than a file, so it works the
+    same whether GAIA is running under `uv run`, as a packaged executable, or
+    anywhere else that gives no guaranteed place to tail a log file.
+    """
+    min_level = logging.getLevelName(level.upper())
+    if not isinstance(min_level, int):
+        raise HTTPException(422, f"unknown log level: {level}")
+
+    records = BUFFER.tail(limit=limit, min_level=min_level)
+    return {"logs": records, "generatedAt": to_iso(utcnow())}

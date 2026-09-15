@@ -18,6 +18,7 @@ interface Props {
   imageryDate: string;
   onReload: () => void;
   onSettings: () => void;
+  onLogs: () => void;
 }
 
 const HAZARDS = [
@@ -48,6 +49,7 @@ export function TopBar({
   imageryDate,
   onReload,
   onSettings,
+  onLogs,
 }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
@@ -168,6 +170,9 @@ export function TopBar({
       </button>
       <button className="btn" onClick={onSettings} type="button" title="Settings">
         ⚙
+      </button>
+      <button className="btn" onClick={onLogs} type="button" title="Logs">
+        ▤
       </button>
     </header>
   );

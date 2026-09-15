@@ -112,6 +112,24 @@ npm run build
 
 For frontend development with hot reload, run `npm run dev` alongside `gaia serve`.
 
+Alternatively, `scripts/dev.ps1` (Windows) and `scripts/dev.sh` (macOS/Linux) start and
+stop both processes for you:
+
+```powershell
+./scripts/dev.ps1 start     # backend + frontend, picks free ports automatically
+./scripts/dev.ps1 restart
+./scripts/dev.ps1 stop      # kills both process trees fully
+```
+
+```bash
+./scripts/dev.sh start
+./scripts/dev.sh restart
+./scripts/dev.sh stop
+```
+
+Logs are written to `.dev/backend.log` and `.dev/frontend.log`, and PIDs/ports to
+`.dev/dev-pids.json` so `stop`/`restart` can find and fully tear down both processes.
+
 ## Configuration
 
 Settings are environment variables prefixed with `GAIA_`, nested with `__`. Put them in
@@ -171,6 +189,26 @@ macOS.
 Each script builds the frontend, installs the `release` extra (PyInstaller), and
 packages the backend and the built UI into one artifact. Double-clicking it starts the
 server and opens the app in your browser; closing the window stops it.
+
+`scripts/gaia.ps1` (Windows) and `scripts/gaia.sh` (macOS/Linux) manage a packaged
+build from the command line instead — useful for running it unattended or restarting
+it without hunting for the process yourself:
+
+```powershell
+./scripts/gaia.ps1 start     # finds GAIA.exe next to the script, in dist/, or on PATH
+./scripts/gaia.ps1 restart
+./scripts/gaia.ps1 stop      # kills the process tree fully
+```
+
+```bash
+./scripts/gaia.sh start
+./scripts/gaia.sh restart
+./scripts/gaia.sh stop
+```
+
+The port defaults to 8000 and is auto-bumped past anything already listening; pass
+`-Port`/`--port` to start from a different one. State and logs live in `.gaia-state/`
+next to whichever binary was found.
 
 ## Architecture
 
