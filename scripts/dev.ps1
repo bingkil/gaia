@@ -52,6 +52,22 @@ function Stop-ProcessTree([int]$processId) {
     Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
 }
 
+# True if this process (or one of its descendants) is actually part of this
+# repo's dev servers - i.e. `gaia serve`, or anything running out of this
+# repo's directory (e.g. vite/npm under web\). Used before the port-based
+# safety net touches a listener we did not start ourselves, so an unrelated
+# process that happens to be squatting on 8000/5173 is never killed.
+function Test-IsGaiaProcess([int]$processId) {
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction SilentlyContinue
+    if (-not $proc) { return $false }
+    if ($proc.CommandLine -match 'gaia\s+serve') { return $true }
+    if ($proc.CommandLine -match [regex]::Escape($root)) { return $true }
+    foreach ($child in Get-ChildProcessIds $processId) {
+        if (Test-IsGaiaProcess $child) { return $true }
+    }
+    return $false
+}
+
 function Stop-Dev {
     $stoppedAny = $false
     $ports = @()
@@ -75,13 +91,20 @@ function Stop-Dev {
 
     if ($ports.Count -eq 0) { $ports = @(8000, 5173) }
 
-    # Safety net: anything still bound to a known dev port, saved PID or not.
+    # Safety net: anything still bound to a known dev port, saved PID or not -
+    # but only if it's actually one of our own processes. A port we used to
+    # own may since have been claimed by an unrelated process; leave it alone.
     foreach ($listenPort in ($ports | Select-Object -Unique)) {
         Get-NetTCPConnection -LocalPort $listenPort -State Listen -ErrorAction SilentlyContinue |
             ForEach-Object {
-                Write-Host "==> Stopping stray listener on port $listenPort (PID $($_.OwningProcess))"
-                Stop-ProcessTree $_.OwningProcess
-                $stoppedAny = $true
+                $ownerId = $_.OwningProcess
+                if (Test-IsGaiaProcess $ownerId) {
+                    Write-Host "==> Stopping stray listener on port $listenPort (PID $ownerId)"
+                    Stop-ProcessTree $ownerId
+                    $stoppedAny = $true
+                } else {
+                    Write-Host "==> Port $listenPort is held by PID $ownerId, which isn't a GAIA process - leaving it alone"
+                }
             }
     }
 

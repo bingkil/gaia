@@ -12,16 +12,25 @@ import type { EventFeatureProperties, SeismicModel, WatchArea } from "../api/typ
 import { ago, coordText, frpText, magnitudeText } from "../components/format";
 import { PROVENANCE_MARKS } from "../components/ProvenanceBadge";
 import { circlePolygon, framesAt, surfaceWaveRadiusKm } from "./geometry";
-import { registerIcons } from "./icons";
+import {
+  airlineFromCallsign,
+  type FlightFeatureProperties,
+  type FlightsBoundingBox,
+  fetchFlights,
+} from "./flights";
+import { registerAircraftIcon, registerIcons } from "./icons";
 import { type AerialCapture, fetchAerialCapture } from "./imagery";
 import {
   LAYER_AERIAL,
   LAYER_EVENT_HALO,
   LAYER_EVENT_ICONS,
+  LAYER_FLIGHTS,
   LAYER_LIVE,
   LAYER_QUAKE_PULSE,
   PULSE_WINDOW_SECONDS,
   SRC_EVENTS,
+  SRC_FLIGHT_TRAILS,
+  SRC_FLIGHTS,
   SRC_FRAMES,
   SRC_WATCH,
   SRC_WAVEFRONT,
@@ -29,7 +38,10 @@ import {
   addLayers,
   addLiveImagery,
   pulsePaint,
+  setAshFramesVisible,
   setData,
+  setFlightsVisible,
+  setFlightTrailsVisible,
   setLiveImageryDate,
 } from "./layers";
 import {
@@ -64,6 +76,12 @@ const ANIMATION_INTERVAL_MS = 100;
 /** Close enough to read the shape of a coastline without losing context. */
 const FOCUS_ZOOM = 5.5;
 
+/** Paced to spread the shared account's ~4,000 credits/day budget across a full day, not just a few hours. */
+const FLIGHTS_POLL_MS = 25000;
+
+/** Fixes per aircraft kept for its trail; at one fix per poll this covers a couple of minutes. */
+const TRAIL_MAX_POINTS = 8;
+
 export interface MapFocus {
   longitude: number;
   latitude: number;
@@ -85,6 +103,11 @@ interface Props {
   onAerialCapture: (capture: AerialCapture | null | undefined) => void;
   trackVisible: boolean;
   onVisibleChange: (eventIds: Set<string>) => void;
+  showFlights: boolean;
+  showFlightTrails: boolean;
+  showAsh: boolean;
+  onFlightsData: (flights: GeoJSON.FeatureCollection) => void;
+  onFlightsStatus: (status: { loading: boolean; error: string | null }) => void;
 }
 
 /**
@@ -179,6 +202,42 @@ function tooltipContent(
   return root;
 }
 
+function flightTooltip(props: FlightFeatureProperties): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "map-tip-body";
+
+  const head = document.createElement("div");
+  head.className = "map-tip-head";
+  const title = document.createElement("span");
+  title.className = "map-tip-title";
+  title.textContent = props.callsign ?? props.icao24;
+  head.append(title);
+  root.append(head);
+
+  const meta = document.createElement("div");
+  meta.className = "map-tip-meta";
+  meta.textContent = [
+    airlineFromCallsign(props.callsign),
+    typeof props.altitudeM === "number" ? `${Math.round(props.altitudeM)} m` : null,
+    typeof props.velocityMs === "number" ? `${Math.round(props.velocityMs * 3.6)} km/h` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  root.append(meta);
+
+  return root;
+}
+
+/** One LineString per aircraft, oldest to newest; line-gradient fades it along its length. */
+function trailCollection(history: Map<string, [number, number][]>): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const points of history.values()) {
+    if (points.length < 2) continue;
+    features.push({ type: "Feature", geometry: { type: "LineString", coordinates: points }, properties: {} });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 function wavefrontFeatures(
   events: GeoJSON.FeatureCollection,
   nowMs: number,
@@ -259,6 +318,8 @@ export function MapView(props: Props): React.JSX.Element {
   latest.current = props;
 
   const aerialAbort = useRef<AbortController | null>(null);
+  const flightsAbort = useRef<AbortController | null>(null);
+  const flightHistory = useRef<Map<string, [number, number][]>>(new Map());
 
   // Esri's mosaic vintage varies by location, so it must be re-checked
   // whenever the view settles, not just once when the layer turns on.
@@ -274,6 +335,61 @@ export function MapView(props: Props): React.JSX.Element {
       .catch(() => {
         if (!controller.signal.aborted) latest.current.onAerialCapture(null);
       });
+  };
+
+  // A failed/throttled request just leaves the last-drawn frame on screen
+  // rather than blanking the layer; a plane's position a few seconds stale is
+  // still more useful than no plane at all. The loading/error status is still
+  // reported so the UI can say why nothing new is showing up.
+  const pollFlights = (map: MapLibreMap): void => {
+    flightsAbort.current?.abort();
+    const controller = new AbortController();
+    flightsAbort.current = controller;
+    const bounds = map.getBounds();
+    const bbox: FlightsBoundingBox = {
+      north: bounds.getNorth(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      west: bounds.getWest(),
+    };
+    latest.current.onFlightsStatus({ loading: true, error: null });
+    fetchFlights(bbox, controller.signal)
+      .then((collection) => {
+        if (controller.signal.aborted) return;
+        setData(map, SRC_FLIGHTS, collection);
+        updateFlightTrails(map, collection);
+        latest.current.onFlightsData(collection);
+        latest.current.onFlightsStatus({ loading: false, error: null });
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = cause instanceof Error ? cause.message : "flights request failed";
+        latest.current.onFlightsStatus({ loading: false, error: message });
+      });
+  };
+
+
+  // History is kept regardless of the trails toggle (it is cheap, and this
+  // way turning trails on shows a couple of minutes of past track right
+  // away rather than starting from nothing).
+  const updateFlightTrails = (map: MapLibreMap, collection: GeoJSON.FeatureCollection): void => {
+    const history = flightHistory.current;
+    const seen = new Set<string>();
+    for (const feature of collection.features) {
+      if (feature.geometry.type !== "Point") continue;
+      const icao24 = (feature.properties as unknown as FlightFeatureProperties).icao24;
+      seen.add(icao24);
+      const points = history.get(icao24) ?? [];
+      points.push(feature.geometry.coordinates as [number, number]);
+      if (points.length > TRAIL_MAX_POINTS) points.shift();
+      history.set(icao24, points);
+    }
+    // A plane that has left the current snapshot (out of view, landed) stops
+    // updating rather than freezing its trail in place forever.
+    for (const icao24 of history.keys()) {
+      if (!seen.has(icao24)) history.delete(icao24);
+    }
+    if (latest.current.showFlightTrails) setData(map, SRC_FLIGHT_TRAILS, trailCollection(history));
   };
 
   useEffect(() => {
@@ -297,6 +413,7 @@ export function MapView(props: Props): React.JSX.Element {
     // settles while tiles are still streaming.
     map.on("style.load", () => {
       registerIcons(map);
+      registerAircraftIcon(map);
       addLayers(map);
       addAerial(map);
       addLiveImagery(map, latest.current.imageryDate);
@@ -307,6 +424,10 @@ export function MapView(props: Props): React.JSX.Element {
       setData(map, SRC_WATCH, watchCollection(latest.current.watchAreas));
       showBasemap(map, latest.current.basemap);
       if (latest.current.basemap === "aerial") requestAerialCapture(map);
+      setFlightsVisible(map, latest.current.showFlights);
+      setFlightTrailsVisible(map, latest.current.showFlights && latest.current.showFlightTrails);
+      setAshFramesVisible(map, latest.current.showAsh);
+      if (latest.current.showFlights) pollFlights(map);
       map.setFilter(LAYER_EVENT_HALO, [
         "==",
         ["get", "eventId"],
@@ -351,14 +472,26 @@ export function MapView(props: Props): React.JSX.Element {
         .addTo(map);
     });
 
-    for (const [type, cursor] of [
-      ["mouseenter", "pointer"],
-      ["mouseleave", ""],
-    ] as const) {
-      map.on(type, LAYER_EVENT_ICONS, () => {
-        map.getCanvas().style.cursor = latest.current.pickMode ? "crosshair" : cursor;
-        if (type === "mouseleave") tip.remove();
-      });
+    map.on("mousemove", LAYER_FLIGHTS, (event) => {
+      if (latest.current.pickMode) return;
+      const feature = event.features?.[0];
+      if (!feature || feature.geometry.type !== "Point") return;
+      tip
+        .setLngLat(feature.geometry.coordinates as [number, number])
+        .setDOMContent(flightTooltip(feature.properties as unknown as FlightFeatureProperties))
+        .addTo(map);
+    });
+
+    for (const layer of [LAYER_EVENT_ICONS, LAYER_FLIGHTS]) {
+      for (const [type, cursor] of [
+        ["mouseenter", "pointer"],
+        ["mouseleave", ""],
+      ] as const) {
+        map.on(type, layer, () => {
+          map.getCanvas().style.cursor = latest.current.pickMode ? "crosshair" : cursor;
+          if (type === "mouseleave") tip.remove();
+        });
+      }
     }
 
     map.on("error", (event) => {
@@ -397,6 +530,7 @@ export function MapView(props: Props): React.JSX.Element {
     map.on("idle", reportVisible);
     map.on("moveend", () => {
       if (latest.current.basemap === "aerial") requestAerialCapture(map);
+      if (latest.current.showFlights) pollFlights(map);
     });
 
     const tick = (time: number): void => {
@@ -511,6 +645,54 @@ export function MapView(props: Props): React.JSX.Element {
     if (!map) return;
     map.getCanvas().style.cursor = props.pickMode ? "crosshair" : "";
   }, [props.pickMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!props.showFlights) {
+      flightsAbort.current?.abort();
+      if (map && readyRef.current) {
+        setFlightsVisible(map, false);
+        setData(map, SRC_FLIGHTS, { type: "FeatureCollection", features: [] });
+      }
+      props.onFlightsData({ type: "FeatureCollection", features: [] });
+      props.onFlightsStatus({ loading: false, error: null });
+      return;
+    }
+    // The map may still be loading its style when this first turns on (e.g.
+    // restored from localStorage), so the interval is armed unconditionally;
+    // each tick checks readiness itself rather than depending on this effect
+    // re-running once the style finishes loading.
+    if (map && readyRef.current) {
+      setFlightsVisible(map, true);
+      pollFlights(map);
+    }
+    const interval = window.setInterval(() => {
+      const current = mapRef.current;
+      if (current && readyRef.current) pollFlights(current);
+    }, FLIGHTS_POLL_MS);
+    return () => {
+      window.clearInterval(interval);
+      flightsAbort.current?.abort();
+    };
+  }, [props.showFlights]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const visible = props.showFlights && props.showFlightTrails;
+    setFlightTrailsVisible(map, visible);
+    setData(
+      map,
+      SRC_FLIGHT_TRAILS,
+      visible ? trailCollection(flightHistory.current) : { type: "FeatureCollection", features: [] },
+    );
+  }, [props.showFlightTrails, props.showFlights]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    setAshFramesVisible(map, props.showAsh);
+  }, [props.showAsh]);
 
   return <div className="map-root" ref={containerRef} />;
 }

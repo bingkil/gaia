@@ -84,12 +84,28 @@ class FirmsSettings(ProviderSettings):
     attribution: str = "NASA FIRMS"
 
 
+class IsigmetSettings(ProviderSettings):
+    feed_url: str = "https://aviationweather.gov/api/data/isigmet"
+    poll_seconds: float = 300.0
+    stale_after_seconds: float = 3600.0
+    attribution: str = "NOAA Aviation Weather Center, international SIGMET"
+
+
+class OpenSkySettings(BaseModel):
+    # OAuth2 client credentials from https://opensky-network.org/my-opensky/account.
+    # Set GAIA_OPENSKY__CLIENT_ID / GAIA_OPENSKY__CLIENT_SECRET. Anonymous access
+    # is used (400 credits/day, easily exhausted) if left blank.
+    client_id: str = ""
+    client_secret: str = ""
+
+
 class Providers(BaseModel):
     emsc: EmscSettings = EmscSettings()
     usgs: UsgsSettings = UsgsSettings()
     geofon: GeofonSettings = GeofonSettings()
     gdacs: GdacsSettings = GdacsSettings()
     firms: FirmsSettings = FirmsSettings(enabled=False)
+    isigmet: IsigmetSettings = IsigmetSettings()
 
 
 class CorrelationSettings(BaseModel):
@@ -144,6 +160,7 @@ class Settings(BaseSettings):
     correlation: CorrelationSettings = CorrelationSettings()
     seismic_model: ModelSettings = ModelSettings()
     alerts: AlertSettings = AlertSettings()
+    opensky: OpenSkySettings = OpenSkySettings()
 
     @property
     def db_path(self) -> Path:

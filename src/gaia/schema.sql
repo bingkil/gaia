@@ -192,7 +192,8 @@ CREATE TABLE IF NOT EXISTS notification (
     template_version    TEXT NOT NULL,
     idempotency_key     TEXT NOT NULL UNIQUE,
     created_at          TEXT NOT NULL,
-    read_at             TEXT
+    read_at             TEXT,
+    archived_at         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS notification_created_idx ON notification (created_at DESC);

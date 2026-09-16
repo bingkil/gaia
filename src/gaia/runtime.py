@@ -9,7 +9,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
+
+import httpx
 
 from .config import Settings
 from .config import settings as default_settings
@@ -31,6 +34,15 @@ log = logging.getLogger(__name__)
 
 MANUAL_POLL_MIN_SECONDS = 30.0
 FIRMS_KEY_SECRET = "firms_map_key"
+OPENSKY_CLIENT_ID_SECRET = "opensky_client_id"
+OPENSKY_CLIENT_SECRET_SECRET = "opensky_client_secret"
+OPENSKY_TOKEN_URL = (
+    "https://auth.opensky-network.org/auth/realms/opensky-network"
+    "/protocol/openid-connect/token"
+)
+# OpenSky's daily credit quota, reset at UTC midnight: 10x higher once authenticated.
+OPENSKY_ANONYMOUS_DAILY_CREDITS = 400
+OPENSKY_AUTHENTICATED_DAILY_CREDITS = 4000
 
 
 class Runtime:
@@ -53,6 +65,10 @@ class Runtime:
 
         self.secrets = SecretStore(self.settings.data_dir / "secrets.json")
         self._apply_stored_secrets()
+        self._opensky_token: str | None = None
+        self._opensky_token_expiry: float = 0.0
+        self._opensky_credits_used = 0
+        self._opensky_credits_day = datetime.now(UTC).date()
 
     def _apply_stored_secrets(self) -> None:
         """An environment variable is an explicit override, so it wins."""
@@ -61,6 +77,14 @@ class Runtime:
         if stored and not firms.map_key:
             firms.map_key = stored
             firms.enabled = True
+
+        opensky = self.settings.opensky
+        stored_id = self.secrets.get(OPENSKY_CLIENT_ID_SECRET)
+        stored_secret = self.secrets.get(OPENSKY_CLIENT_SECRET_SECRET)
+        if stored_id and not opensky.client_id:
+            opensky.client_id = stored_id
+        if stored_secret and not opensky.client_secret:
+            opensky.client_secret = stored_secret
 
     def refresh(self, provider: str | None = None) -> list[dict[str, Any]]:
         """Ask adapters to poll now.
@@ -169,6 +193,83 @@ class Runtime:
         self._adapters = [a for a in self._adapters if a.name != "FIRMS"]
         self.health.set_state("FIRMS", ProviderHealth.DISABLED.value)
         return self.firms_key_status()
+
+    def opensky_status(self) -> dict[str, Any]:
+        opensky = self.settings.opensky
+        configured = bool(opensky.client_id and opensky.client_secret)
+        return {
+            "configured": configured,
+            "hint": mask(opensky.client_id) if opensky.client_id else None,
+            "fromEnvironment": configured and not self.secrets.get(OPENSKY_CLIENT_ID_SECRET),
+        }
+
+    def set_opensky_credentials(self, client_id: str, client_secret: str) -> dict[str, Any]:
+        self.secrets.set(OPENSKY_CLIENT_ID_SECRET, client_id)
+        self.secrets.set(OPENSKY_CLIENT_SECRET_SECRET, client_secret)
+        self.settings.opensky.client_id = client_id
+        self.settings.opensky.client_secret = client_secret
+        self._opensky_token = None  # old token was minted for the previous credentials
+        return self.opensky_status()
+
+    def clear_opensky_credentials(self) -> dict[str, Any]:
+        self.secrets.clear(OPENSKY_CLIENT_ID_SECRET)
+        self.secrets.clear(OPENSKY_CLIENT_SECRET_SECRET)
+        self.settings.opensky.client_id = ""
+        self.settings.opensky.client_secret = ""
+        self._opensky_token = None
+        return self.opensky_status()
+
+    def opensky_register_call(self, credits: int) -> bool:
+        """Declines a call once the shared account's daily credit budget is spent.
+
+        Every browser tab polling flights draws on the same account, so this
+        is tracked globally rather than per-request.
+        """
+        today = datetime.now(UTC).date()
+        if today != self._opensky_credits_day:
+            self._opensky_credits_day = today
+            self._opensky_credits_used = 0
+
+        opensky = self.settings.opensky
+        budget = (
+            OPENSKY_AUTHENTICATED_DAILY_CREDITS
+            if opensky.client_id and opensky.client_secret
+            else OPENSKY_ANONYMOUS_DAILY_CREDITS
+        )
+        if self._opensky_credits_used + credits > budget:
+            return False
+        self._opensky_credits_used += credits
+        return True
+
+    async def opensky_bearer_token(self) -> str | None:
+        """Cached OAuth2 client-credentials token; None means use anonymous access."""
+        opensky = self.settings.opensky
+        if not (opensky.client_id and opensky.client_secret):
+            return None
+        if self._opensky_token and time.monotonic() < self._opensky_token_expiry:
+            return self._opensky_token
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.post(
+                    OPENSKY_TOKEN_URL,
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": opensky.client_id,
+                        "client_secret": opensky.client_secret,
+                    },
+                )
+            except httpx.HTTPError as exc:
+                raise RuntimeError(f"OpenSky auth request failed: {exc}") from exc
+
+        if response.status_code != 200:
+            raise RuntimeError(f"OpenSky auth returned {response.status_code}")
+
+        body = response.json()
+        self._opensky_token = body["access_token"]
+        # Refresh a bit early rather than racing the server's own expiry.
+        self._opensky_token_expiry = time.monotonic() + body.get("expires_in", 1800) - 30
+        return self._opensky_token
 
     async def start_ingestion(self) -> None:
         if not self.settings.ingest_enabled:

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from gaia.api.app import create_app
-from gaia.config import Settings
+from gaia.config import IsigmetSettings, Settings
 from gaia.domain.enums import Action, HazardType
 from gaia.domain.models import Observation
+from gaia.providers.isigmet import IsigmetAdapter
 
 VAA_BULLETIN = """FVAU01 ADRM 131800
 VA ADVISORY
@@ -297,6 +299,74 @@ class TestVaaIngest:
     def test_garbage_bulletin_is_rejected_not_invented(self, client):
         response = client.post("/v1/ingest/vaa", json={"bulletin": "hello world"})
         assert response.status_code == 422
+
+
+class TestIsigmetIngest:
+    """A VA record from the international SIGMET feed, shaped as IsigmetAdapter
+    would parse it. Modelled on a real Dukono (Indonesia) SIGMET."""
+
+    RECORD = {
+        "icaoId": "WAAA",
+        "firId": "WAAF",
+        "firName": "UJUNG PANDANG",
+        "receiptTime": "2026-09-16T08:12:06.162Z",
+        "validTimeFrom": 1789546320,
+        "validTimeTo": 1789567200,
+        "seriesId": "09",
+        "hazard": "VA",
+        "qualifier": "DUKONO",
+        "geom": "AREA",
+        "coords": [
+            {"lon": 127.917, "lat": 1.65},
+            {"lon": 127.817, "lat": 1.7},
+            {"lon": 127.817, "lat": 2.533},
+            {"lon": 128.467, "lat": 2.283},
+            {"lon": 127.917, "lat": 1.65},
+        ],
+        "rawSigmet": (
+            "WVID21 WAAA 160810\n"
+            "WAAF SIGMET 09 VALID 160810/161410 WAAA-\n"
+            "WAAF UJUNG PANDANG  FIR VA\n"
+            "ERUPTION MT DUKONO\n"
+            "PSN N0142 E12754 VA CLD OBS AT 0810Z WI N0139\n"
+            "E12755 - N0142 E12749 - N0232 E12753 - N0217 E12828 - N0139 E12755\n"
+            "SFC/FL070 MOV N 10KT\n"
+            "NC="
+        ),
+    }
+
+    def _ingest(self, client):
+        runtime = client.app.state.runtime
+        adapter = IsigmetAdapter(ctx=None, settings=IsigmetSettings())
+        records = adapter.parse(json.dumps([self.RECORD]).encode())
+        observation = adapter.to_observation(records[0], "raw/isigmet-test", "sha")
+        runtime.observations.insert(observation)
+        # Run on the app's own event loop so the bus and pipeline share it.
+        return client.portal.call(runtime.pipeline.handle_observation, observation)
+
+    def test_va_sigmet_becomes_an_ash_event_with_a_frame(self, client):
+        event = self._ingest(client)
+
+        assert event.hazard_type.value == "ASH"
+        assert event.provenance_class.value == "AUTHORITATIVE_NOTICE"
+        assert event.summary.volcano_name == "DUKONO"
+
+        events = client.get("/v1/events").json()["events"]
+        assert any(e["id"] == event.id for e in events)
+
+    def test_frame_geometry_and_levels_are_parsed(self, client):
+        event = self._ingest(client)
+
+        features = client.get(
+            "/v1/map/frames.geojson", params={"eventId": event.id}
+        ).json()["features"]
+
+        assert len(features) == 1
+        assert features[0]["properties"]["frameKind"] == "OBSERVED"
+        assert features[0]["geometry"]["type"] == "Polygon"
+
+        advisories = client.get(f"/v1/events/{event.id}").json()["advisories"]
+        assert advisories[0]["altitude"]["top_flight_level"] == 70
 
 
 class TestProviderHealth:

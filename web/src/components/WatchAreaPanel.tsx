@@ -6,6 +6,7 @@ interface Props {
   watchAreas: WatchArea[];
   location: { longitude: number; latitude: number } | null;
   onChanged: () => void;
+  onClose: () => void;
 }
 
 /** The circle ring is symmetric around its centre, so its bbox midpoint is the centre. */
@@ -19,8 +20,12 @@ function centerOf(geometry: GeoJSON.Geometry): { longitude: number; latitude: nu
   };
 }
 
-export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): React.JSX.Element {
-  const [open, setOpen] = useState(false);
+export function WatchAreaPanel({
+  watchAreas,
+  location,
+  onChanged,
+  onClose,
+}: Props): React.JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [radiusKm, setRadiusKm] = useState(300);
@@ -91,104 +96,102 @@ export function WatchAreaPanel({ watchAreas, location, onChanged }: Props): Reac
     <section className="panel glass">
       <header className="panel-head">
         <span className="panel-title">Watch areas</span>
-        <button className="btn ghost" onClick={() => setOpen(!open)} type="button">
-          {open ? "−" : "+"}
+        <button className="btn ghost" onClick={onClose} type="button" aria-label="Close">
+          ✕
         </button>
       </header>
 
-      {open ? (
-        <div className="panel-body pad">
-          {watchAreas.map((area) => (
-            <div
-              key={area.id}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}
+      <div className="panel-body pad">
+        {watchAreas.map((area) => (
+          <div
+            key={area.id}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}
+          >
+            <span style={{ flex: 1, fontSize: 11 }}>{area.name}</span>
+            <span style={{ fontSize: 10, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>
+              {Math.round(area.radius_km)} km · M{area.min_magnitude}
+            </span>
+            <button
+              className="btn ghost"
+              onClick={() => startEdit(area)}
+              type="button"
+              aria-label={`Edit ${area.name}`}
             >
-              <span style={{ flex: 1, fontSize: 11 }}>{area.name}</span>
-              <span style={{ fontSize: 10, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>
-                {Math.round(area.radius_km)} km · M{area.min_magnitude}
-              </span>
-              <button
-                className="btn ghost"
-                onClick={() => startEdit(area)}
-                type="button"
-                aria-label={`Edit ${area.name}`}
-              >
-                ✎
-              </button>
-              <button
-                className="btn ghost"
-                onClick={() => remove(area)}
-                type="button"
-                aria-label={`Delete ${area.name}`}
-              >
-                ✕
-              </button>
+              ✎
+            </button>
+            <button
+              className="btn ghost"
+              onClick={() => remove(area)}
+              type="button"
+              aria-label={`Delete ${area.name}`}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+
+        <div style={{ borderTop: "1px solid var(--glass-border)", margin: "10px 0" }} />
+
+        {error ? <p className="legend-note">{error}</p> : null}
+
+        {showForm ? (
+          <>
+            <div className="field">
+              <label htmlFor="watch-name">Name</label>
+              <input
+                id="watch-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Home"
+              />
             </div>
-          ))}
-
-          <div style={{ borderTop: "1px solid var(--glass-border)", margin: "10px 0" }} />
-
-          {error ? <p className="legend-note">{error}</p> : null}
-
-          {showForm ? (
-            <>
+            <div className="field-row">
               <div className="field">
-                <label htmlFor="watch-name">Name</label>
+                <label htmlFor="watch-radius">Radius km</label>
                 <input
-                  id="watch-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Home"
+                  id="watch-radius"
+                  type="number"
+                  min={1}
+                  max={2000}
+                  value={radiusKm}
+                  onChange={(event) => setRadiusKm(Number(event.target.value))}
                 />
               </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="watch-radius">Radius km</label>
-                  <input
-                    id="watch-radius"
-                    type="number"
-                    min={1}
-                    max={2000}
-                    value={radiusKm}
-                    onChange={(event) => setRadiusKm(Number(event.target.value))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="watch-mag">Min M</label>
-                  <input
-                    id="watch-mag"
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    value={minMagnitude}
-                    onChange={(event) => setMinMagnitude(Number(event.target.value))}
-                  />
-                </div>
+              <div className="field">
+                <label htmlFor="watch-mag">Min M</label>
+                <input
+                  id="watch-mag"
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  value={minMagnitude}
+                  onChange={(event) => setMinMagnitude(Number(event.target.value))}
+                />
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  className="btn"
-                  onClick={submit}
-                  disabled={busy || name.trim() === ""}
-                  type="button"
-                >
-                  {editingId ? "Save changes" : "Add at current location"}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                className="btn"
+                onClick={submit}
+                disabled={busy || name.trim() === ""}
+                type="button"
+              >
+                {editingId ? "Save changes" : "Add at current location"}
+              </button>
+              {editingId ? (
+                <button className="btn ghost" onClick={cancelEdit} type="button">
+                  Cancel
                 </button>
-                {editingId ? (
-                  <button className="btn ghost" onClick={cancelEdit} type="button">
-                    Cancel
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <p className="empty" style={{ padding: "6px 0" }}>
-              Set a location first.
-            </p>
-          )}
-        </div>
-      ) : null}
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <p className="empty" style={{ padding: "6px 0" }}>
+            Set a location first.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

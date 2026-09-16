@@ -17,7 +17,6 @@ interface Props {
   selectedId: string | null;
   onSelect: (event: HazardEvent) => void;
   inView: boolean;
-  onInView: (value: boolean) => void;
   range: TimeRange;
   onRange: (range: TimeRange) => void;
 }
@@ -25,7 +24,7 @@ interface Props {
 /** Reuses the map's shape cue so a row and its marker read as the same thing. */
 const DIAMOND_POINTS = "6,0.4 11.6,6 6,11.6 0.4,6";
 
-function HazardIcon({ hazardType }: { hazardType: HazardType }): React.JSX.Element {
+export function HazardIcon({ hazardType }: { hazardType: HazardType }): React.JSX.Element {
   const shape = SHAPE_BY_HAZARD[hazardType];
   return (
     <svg
@@ -79,7 +78,6 @@ export function EventList({
   selectedId,
   onSelect,
   inView,
-  onInView,
   range,
   onRange,
 }: Props): React.JSX.Element {
@@ -90,23 +88,7 @@ export function EventList({
   const to = range.kind === "day" ? range.to : today;
 
   return (
-    <section className="panel glass grow">
-      <header className="panel-head">
-        <span className="panel-title">Active events</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <button
-            className={`btn${inView ? " on" : ""}`}
-            onClick={() => onInView(!inView)}
-            type="button"
-            aria-pressed={inView}
-            title="Limit the list to events drawn in the current map view"
-          >
-            In view
-          </button>
-          <span className="tag">{events.length}</span>
-        </div>
-      </header>
-
+    <>
       <div className="range-bar">
         {ROLLING_PRESETS.map((hours) => (
           <button
@@ -226,6 +208,6 @@ export function EventList({
           })
         )}
       </div>
-    </section>
+    </>
   );
 }

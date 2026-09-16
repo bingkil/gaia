@@ -4,6 +4,10 @@ import { FLAME_PATH, SEVERITY_COLOURS, type Shape, VOLCANO_PATH } from "./severi
 const SIZE = 48;
 const SHAPES: Shape[] = ["circle", "volcano", "diamond", "flame"];
 
+/** Dart silhouette on a 12x12 box, nose up, so icon-rotate can point it at true track directly. */
+export const AIRCRAFT_PATH = "M6 0 L11.5 10 L6 7.6 L0.5 10 Z";
+export const AIRCRAFT_ICON = "gaia-aircraft";
+
 /** Places a 12x12 authored path centred in the canvas at the given box size. */
 function boxed(path: Path2D, d: string, side: number): void {
   const c = SIZE / 2;
@@ -72,4 +76,31 @@ export function registerIcons(map: MapLibreMap): void {
       map.addImage(name, ctx.getImageData(0, 0, SIZE, SIZE), { pixelRatio: 2 });
     }
   }
+}
+
+/** A single fixed marker, unlike the hazard icons: heading is carried by icon-rotate, not artwork. */
+export function registerAircraftIcon(map: MapLibreMap): void {
+  if (map.hasImage(AIRCRAFT_ICON)) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const path = new Path2D();
+  boxed(path, AIRCRAFT_PATH, 22);
+
+  ctx.shadowColor = "#f0b429";
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = "#f0b429dd";
+  ctx.fill(path);
+
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#ffffff";
+  ctx.globalAlpha = 0.92;
+  ctx.stroke(path);
+
+  map.addImage(AIRCRAFT_ICON, ctx.getImageData(0, 0, SIZE, SIZE), { pixelRatio: 2 });
 }

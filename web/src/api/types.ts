@@ -224,12 +224,20 @@ export interface FirmsKeyStatus {
   enabled: boolean;
 }
 
+export interface OpenSkyCredentialsStatus {
+  configured: boolean;
+  /** Masked tail of the client ID only. Neither value ever leaves the server. */
+  hint: string | null;
+  fromEnvironment: boolean;
+}
+
 export interface SettingsResponse {
   providers: ProviderSetting[];
   ingestEnabled: boolean;
   manualPollMinSeconds: number;
   dataDir: string;
   firmsKey: FirmsKeyStatus;
+  openSky: OpenSkyCredentialsStatus;
 }
 
 export interface LogEntry {
@@ -252,6 +260,7 @@ export interface NotificationRecord {
   body: string;
   createdAt: string;
   readAt: string | null;
+  archivedAt: string | null;
   watchAreaId: string | null;
   reasonCodes: string[];
   impact: Partial<ImpactResult>;

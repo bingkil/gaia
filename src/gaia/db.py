@@ -56,6 +56,12 @@ class Database:
     def migrate(self) -> None:
         with self._lock:
             self._conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+            # CREATE TABLE IF NOT EXISTS above does not add columns to a table that
+            # already exists from before this column was introduced.
+            try:
+                self._conn.execute("ALTER TABLE notification ADD COLUMN archived_at TEXT")
+            except sqlite3.OperationalError:
+                pass
             self._conn.commit()
 
     @contextmanager

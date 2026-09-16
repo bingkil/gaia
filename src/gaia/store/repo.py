@@ -107,6 +107,7 @@ class EventRepo:
                 confidence, current_payload)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET
+                 hazard_type=excluded.hazard_type,
                  state=excluded.state,
                  provenance_class=excluded.provenance_class,
                  quality=excluded.quality,

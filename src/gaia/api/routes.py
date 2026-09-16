@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,7 @@ from ..domain.models import HazardEvent, WatchArea
 from ..engine.impact import ash_impact, earthquake_impact
 from ..logbuffer import BUFFER
 from ..providers import ADAPTERS, StreamingAdapter
+from ..providers.base import USER_AGENT
 from ..runtime import MANUAL_POLL_MIN_SECONDS, Runtime
 from ..store import (
     AdvisoryRepo,
@@ -439,12 +441,16 @@ async def delete_watch_area(request: Request, area_id: str) -> None:
 
 
 @router.get("/notifications")
-async def notifications(request: Request, limit: int = Query(50, le=200)) -> dict[str, Any]:
+async def notifications(
+    request: Request, limit: int = Query(50, le=200), archived: bool = False
+) -> dict[str, Any]:
     runtime = runtime_of(request)
+    clause = "n.archived_at IS NOT NULL" if archived else "n.archived_at IS NULL"
     rows = runtime.db.query(
-        """SELECT n.*, d.reason_codes, d.computed_impact, d.watch_area_id
+        f"""SELECT n.*, d.reason_codes, d.computed_impact, d.watch_area_id
            FROM notification n
            JOIN alert_decision d ON d.id = n.alert_decision_id
+           WHERE {clause}
            ORDER BY n.created_at DESC LIMIT ?""",
         (limit,),
     )
@@ -460,6 +466,7 @@ async def notifications(request: Request, limit: int = Query(50, le=200)) -> dic
                 "body": r["body"],
                 "createdAt": r["created_at"],
                 "readAt": r["read_at"],
+                "archivedAt": r["archived_at"],
                 "watchAreaId": r["watch_area_id"],
                 "reasonCodes": loads(r["reason_codes"], []),
                 "impact": loads(r["computed_impact"], {}),
@@ -474,6 +481,14 @@ async def mark_read(request: Request, notification_id: str) -> None:
     runtime = runtime_of(request)
     runtime.db.execute(
         "UPDATE notification SET read_at=? WHERE id=?", (to_iso(utcnow()), notification_id)
+    )
+
+
+@router.post("/notifications/{notification_id}/archive", status_code=204)
+async def archive_notification(request: Request, notification_id: str) -> None:
+    runtime = runtime_of(request)
+    runtime.db.execute(
+        "UPDATE notification SET archived_at=? WHERE id=?", (to_iso(utcnow()), notification_id)
     )
 
 
@@ -609,6 +624,7 @@ async def read_settings(request: Request) -> dict[str, Any]:
         "manualPollMinSeconds": MANUAL_POLL_MIN_SECONDS,
         "dataDir": str(runtime.settings.data_dir),
         "firmsKey": runtime.firms_key_status(),
+        "openSky": runtime.opensky_status(),
     }
 
 
@@ -630,6 +646,25 @@ async def set_firms_key(request: Request, mapKey: str = Body(..., embed=True)) -
 @router.delete("/settings/firms-key")
 async def clear_firms_key(request: Request) -> dict[str, Any]:
     return await runtime_of(request).clear_firms_key()
+
+
+@router.put("/settings/opensky-credentials")
+async def set_opensky_credentials(
+    request: Request,
+    clientId: str = Body(..., embed=True),
+    clientSecret: str = Body(..., embed=True),
+) -> dict[str, Any]:
+    """Store OpenSky OAuth2 client credentials. Never read back out."""
+    client_id = clientId.strip()
+    client_secret = clientSecret.strip()
+    if not client_id or not client_secret:
+        raise HTTPException(422, "client ID and secret are both required")
+    return runtime_of(request).set_opensky_credentials(client_id, client_secret)
+
+
+@router.delete("/settings/opensky-credentials")
+async def clear_opensky_credentials(request: Request) -> dict[str, Any]:
+    return runtime_of(request).clear_opensky_credentials()
 
 
 @router.get("/status")
@@ -654,3 +689,58 @@ async def logs(
 
     records = BUFFER.tail(limit=limit, min_level=min_level)
     return {"logs": records, "generatedAt": to_iso(utcnow())}
+
+
+OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+
+
+def _opensky_credit_cost(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> int:
+    """OpenSky bills a bbox query 1-4 credits depending on the area covered."""
+    area = abs(max_lon - min_lon) * abs(max_lat - min_lat)
+    if area <= 25:
+        return 1
+    if area <= 100:
+        return 2
+    if area <= 400:
+        return 3
+    return 4
+
+
+@router.get("/flights")
+async def flights(bbox: str, request: Request) -> dict[str, Any]:
+    """Live aircraft positions, proxied server-side.
+
+    OpenSky's CORS header is locked to their own origin, so the browser
+    cannot call it directly; this just forwards the request and passes their
+    response through unchanged.
+    """
+    parts = [float(p) for p in bbox.split(",")]
+    if len(parts) != 4:
+        raise HTTPException(400, "bbox must be minLon,minLat,maxLon,maxLat")
+    min_lon, min_lat, max_lon, max_lat = parts
+
+    params = {"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon}
+    headers = {"User-Agent": USER_AGENT}
+    runtime = runtime_of(request)
+
+    credits = _opensky_credit_cost(min_lon, min_lat, max_lon, max_lat)
+    if not runtime.opensky_register_call(credits):
+        raise HTTPException(429, "OpenSky daily credit budget reached; try again after it resets")
+
+    try:
+        token = await runtime.opensky_bearer_token()
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    async with httpx.AsyncClient(headers=headers, timeout=10.0) as client:
+        try:
+            response = await client.get(OPENSKY_STATES_URL, params=params)
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, f"OpenSky request failed: {exc}") from exc
+
+    if response.status_code != 200:
+        raise HTTPException(502, f"OpenSky returned {response.status_code}")
+    return response.json()
+

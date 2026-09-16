@@ -8,6 +8,7 @@ import type {
   Meta,
   NotificationRecord,
   Observation,
+  OpenSkyCredentialsStatus,
   ProviderRecord,
   RefreshResult,
   SettingsResponse,
@@ -122,11 +123,16 @@ export const api = {
   deleteWatchArea: (id: string) =>
     request<void>(`/v1/watch-areas/${id}`, { method: "DELETE" }),
 
-  notifications: () =>
-    request<{ notifications: NotificationRecord[] }>("/v1/notifications"),
+  notifications: (params: { archived?: boolean } = {}) =>
+    request<{ notifications: NotificationRecord[] }>(
+      `/v1/notifications${params.archived ? "?archived=true" : ""}`,
+    ),
 
   markRead: (id: string) =>
     request<void>(`/v1/notifications/${id}/read`, { method: "POST" }),
+
+  archiveNotification: (id: string) =>
+    request<void>(`/v1/notifications/${id}/archive`, { method: "POST" }),
 
   alertDecisions: (eventId: string) =>
     request<{ decisions: AlertDecision[] }>(`/v1/alert-decisions/${eventId}`),
@@ -155,6 +161,15 @@ export const api = {
     }),
 
   clearFirmsKey: () => request<FirmsKeyStatus>("/v1/settings/firms-key", { method: "DELETE" }),
+
+  setOpenSkyCredentials: (clientId: string, clientSecret: string) =>
+    request<OpenSkyCredentialsStatus>("/v1/settings/opensky-credentials", {
+      method: "PUT",
+      body: JSON.stringify({ clientId, clientSecret }),
+    }),
+
+  clearOpenSkyCredentials: () =>
+    request<OpenSkyCredentialsStatus>("/v1/settings/opensky-credentials", { method: "DELETE" }),
 
   logs: (params: { limit?: number; level?: string } = {}) => {
     const query = new URLSearchParams();

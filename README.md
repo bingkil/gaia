@@ -51,8 +51,13 @@ authority's own feed corroborates it.
   NASA satellite imagery (see below).
 - **Watch areas**: a named radius around a point (e.g. your location) with its own
   minimum-magnitude threshold, so quiet-hours or local alerting can differ by place.
+- **Optional flight-tracking overlay**: in-view aircraft from OpenSky Network, shown
+  alongside ash advisories so exposure to an ash cloud is visible on the map itself.
+- **Automated volcanic ash ingest**: polls NOAA's international SIGMET feed for
+  volcanic ash records and turns each into an ash event with observed geometry.
 - **Manual VAA ingest**: paste a Volcanic Ash Advisory bulletin to parse it into ash
-  geometry frames without waiting on the automated feed.
+  geometry frames — useful for the fuller forecast detail a VAA carries that a SIGMET
+  does not.
 - **Selectable time zone and rolling time ranges** for reviewing what happened over the
   last hours or days, independent of the live view.
 - **Replay from stored raw payloads**: every provider response is kept as received, so a
@@ -75,8 +80,10 @@ service.
 | USGS | Independent earthquake confirmation | Review USGS terms before redistribution |
 | GEOFON / GFZ Potsdam | Independent earthquake catalogue | Review GEOFON terms |
 | GDACS | Volcanic events and context | Attribution required; information is indicative |
+| NOAA Aviation Weather Center | International SIGMET volcanic ash advisories | Public, no key required |
 | NASA FIRMS | Satellite thermal anomalies (wildfire detection) | Free map key required |
 | NASA GIBS | Satellite true-colour imagery (real-time basemap) | Public, no key required; attribution required |
+| OpenSky Network | Optional live aircraft positions (flight-tracking overlay) | Anonymous access rate-limited; free registration raises the daily budget |
 
 A free data feed does not grant the right to rebrand its message as an official warning.
 
@@ -112,24 +119,6 @@ npm run build
 
 For frontend development with hot reload, run `npm run dev` alongside `gaia serve`.
 
-Alternatively, `scripts/dev.ps1` (Windows) and `scripts/dev.sh` (macOS/Linux) start and
-stop both processes for you:
-
-```powershell
-./scripts/dev.ps1 start     # backend + frontend, picks free ports automatically
-./scripts/dev.ps1 restart
-./scripts/dev.ps1 stop      # kills both process trees fully
-```
-
-```bash
-./scripts/dev.sh start
-./scripts/dev.sh restart
-./scripts/dev.sh stop
-```
-
-Logs are written to `.dev/backend.log` and `.dev/frontend.log`, and PIDs/ports to
-`.dev/dev-pids.json` so `stop`/`restart` can find and fully tear down both processes.
-
 ## Configuration
 
 Settings are environment variables prefixed with `GAIA_`, nested with `__`. Put them in
@@ -139,12 +128,14 @@ a `.env` file in the repository root.
 GAIA_PORT=8000
 GAIA_PROVIDERS__FIRMS__ENABLED=true
 GAIA_PROVIDERS__FIRMS__MAP_KEY=your_firms_map_key
+GAIA_OPENSKY__CLIENT_ID=your_opensky_client_id
+GAIA_OPENSKY__CLIENT_SECRET=your_opensky_client_secret
 GAIA_ALERTS__MIN_MAGNITUDE=4.5
 ```
 
 Every provider URL and polling interval is configurable without a code change. The
-FIRMS map key can also be entered from the in-app Settings panel, where it is written
-to `data/secrets.json` rather than the environment.
+FIRMS map key and OpenSky credentials can also be entered from the in-app Settings
+panel, where they are written to `data/secrets.json` rather than the environment.
 
 ## Local data
 
@@ -189,26 +180,6 @@ macOS.
 Each script builds the frontend, installs the `release` extra (PyInstaller), and
 packages the backend and the built UI into one artifact. Double-clicking it starts the
 server and opens the app in your browser; closing the window stops it.
-
-`scripts/gaia.ps1` (Windows) and `scripts/gaia.sh` (macOS/Linux) manage a packaged
-build from the command line instead — useful for running it unattended or restarting
-it without hunting for the process yourself:
-
-```powershell
-./scripts/gaia.ps1 start     # finds GAIA.exe next to the script, in dist/, or on PATH
-./scripts/gaia.ps1 restart
-./scripts/gaia.ps1 stop      # kills the process tree fully
-```
-
-```bash
-./scripts/gaia.sh start
-./scripts/gaia.sh restart
-./scripts/gaia.sh stop
-```
-
-The port defaults to 8000 and is auto-bumped past anything already listening; pass
-`-Port`/`--port` to start from a different one. State and logs live in `.gaia-state/`
-next to whichever binary was found.
 
 ## Architecture
 

@@ -86,12 +86,16 @@ textarea {
   z-index: 1;
 }
 
-.topbar {
+/* ">" beats the plain ".topbar" specificity of ".app > *:not(.map-root)" above,
+   so this actually wins instead of silently losing to that z-index: 1. */
+.app > .topbar {
   grid-area: topbar;
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 0 14px;
+  /* Above the rails so its dropdowns (e.g. Trails) aren't painted under them. */
+  z-index: 2;
 }
 
 .rail {
@@ -121,6 +125,14 @@ textarea {
 }
 .rail.collapsed {
   display: none;
+}
+
+.rail-toggle {
+  position: absolute;
+  top: 66px;
+  z-index: 3;
+  padding: 5px 7px;
+  transition: left 0.15s ease;
 }
 
 .clockbar {
@@ -156,6 +168,27 @@ textarea {
   text-transform: uppercase;
   color: var(--fg-dim);
   font-weight: 600;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 14px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-btn.on {
+  color: var(--fg);
 }
 
 .panel-body {
@@ -194,6 +227,9 @@ textarea {
 /* ---------- controls ---------- */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -219,6 +255,61 @@ textarea {
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.layer-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.btn-group {
+  position: relative;
+  display: inline-flex;
+}
+.btn-group .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.topbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 2px;
+  background: var(--glass-border);
+}
+.btn-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding: 5px 7px;
+  font-size: 9px;
+}
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  min-width: 130px;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+.dropdown-item.on {
+  color: var(--accent);
 }
 
 .field {
@@ -315,6 +406,33 @@ input[type="range"] {
 }
 .event-time {
   font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.flight-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.flight-callsign {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.flight-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.flight-airline {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+.flight-meta {
   font-size: 10px;
   color: var(--fg-faint);
   white-space: nowrap;
@@ -425,6 +543,67 @@ input[type="range"] {
   }
 }
 
+.spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 6px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-only {
+  padding: 5px 7px;
+  position: relative;
+}
+
+.alert-btn.unread {
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: alert-glow 1.3s ease-in-out infinite;
+}
+.alert-btn.read {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.alert-btn.none {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+@keyframes alert-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 51, 109, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 7px 2px rgba(232, 51, 109, 0.55);
+  }
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--danger);
+  color: var(--fg);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
 /* ---------- alert banner (solid tier) ---------- */
 
 .alert {
@@ -523,6 +702,10 @@ input[type="range"] {
   text-transform: uppercase;
   color: var(--fg-dim);
 }
+.read-tag {
+  margin-left: 6px;
+  color: var(--accent);
+}
 
 .empty {
   padding: 22px 14px;
@@ -530,6 +713,16 @@ input[type="range"] {
   color: var(--fg-faint);
   font-size: 11px;
   line-height: 1.6;
+}
+
+.list-error {
+  margin: 8px 12px 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(240, 180, 41, 0.12);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .disclaimer {
@@ -617,8 +810,8 @@ input[type="range"] {
   background: rgb(4 7 12 / 62%);
 }
 .modal {
-  width: min(520px, calc(100vw - 32px));
-  max-height: min(78vh, 640px);
+  width: min(640px, calc(100vw - 48px));
+  max-height: min(82vh, 720px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--solid-border);
@@ -626,7 +819,21 @@ input[type="range"] {
 }
 .modal-body {
   overflow: hidden auto;
-  padding: 12px 14px 14px;
+  padding: 18px 24px 22px;
+}
+.settings-section {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.settings-section:first-child {
+  padding-top: 0;
+}
+.settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.settings-section .panel-title {
+  margin-bottom: 10px;
 }
 .modal .panel-title {
   font-size: 12px;
@@ -786,6 +993,11 @@ input[type="range"] {
 }
 .maplibregl-ctrl-attrib a {
   color: var(--fg-faint) !important;
+}
+/* Default disabled opacity (.25) is nearly invisible against this dark theme,
+   which reads as "the button is missing" rather than "at the zoom limit". */
+.maplibregl-ctrl button:disabled .maplibregl-ctrl-icon {
+  opacity: 0.55 !important;
 }
 
 /* Narrow windows: drop the rails to overlays so the map keeps its area. */

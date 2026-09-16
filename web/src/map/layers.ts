@@ -13,11 +13,21 @@ export const SRC_WAVEFRONT = "gaia-wavefront";
 export const SRC_WATCH = "gaia-watch";
 export const SRC_AERIAL = "gaia-aerial";
 export const SRC_LIVE = "gaia-live";
+export const SRC_FLIGHTS = "gaia-flights";
+export const SRC_FLIGHT_TRAILS = "gaia-flight-trails";
 export const LAYER_EVENT_ICONS = "gaia-event-icons";
 export const LAYER_EVENT_HALO = "gaia-event-halo";
 export const LAYER_QUAKE_PULSE = "gaia-quake-pulse";
 export const LAYER_AERIAL = "gaia-aerial-raster";
 export const LAYER_LIVE = "gaia-live-raster";
+export const LAYER_FLIGHTS = "gaia-flights-icons";
+export const LAYER_FLIGHT_TRAILS = "gaia-flight-trails-line";
+const ASH_FRAME_LAYERS = [
+  "gaia-frames-forecast-fill",
+  "gaia-frames-forecast-line",
+  "gaia-frames-observed-fill",
+  "gaia-frames-observed-line",
+];
 
 /** How long a quake keeps pulsing. By the end the ring has faded to nothing. */
 export const PULSE_WINDOW_SECONDS = 3600;
@@ -134,14 +144,67 @@ const LAYERS: LayerSpecification[] = [
     },
     paint: { "icon-opacity": ["case", ["get", "retracted"], 0.35, 1] },
   },
+  // Drawn before the aircraft icons, so a plane's own marker sits on top of its trail.
+  {
+    id: LAYER_FLIGHT_TRAILS,
+    type: "line",
+    source: SRC_FLIGHT_TRAILS,
+    layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+    paint: {
+      "line-width": 1.6,
+      "line-gradient": [
+        "interpolate",
+        ["linear"],
+        ["line-progress"],
+        0,
+        "rgba(240,180,41,0)",
+        1,
+        "rgba(240,180,41,0.8)",
+      ],
+    },
+  },
+  {
+    id: LAYER_FLIGHTS,
+    type: "symbol",
+    source: SRC_FLIGHTS,
+    layout: {
+      "icon-image": "gaia-aircraft",
+      "icon-size": 0.55,
+      "icon-rotate": ["get", "heading"],
+      "icon-rotation-alignment": "map",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      visibility: "none",
+    },
+  },
 ];
 
 export function addLayers(map: MapLibreMap): void {
-  for (const id of [SRC_WATCH, SRC_FRAMES, SRC_WAVEFRONT, SRC_EVENTS]) {
+  for (const id of [SRC_WATCH, SRC_FRAMES, SRC_WAVEFRONT, SRC_EVENTS, SRC_FLIGHTS]) {
     if (!map.getSource(id)) map.addSource(id, { type: "geojson", data: EMPTY });
+  }
+  // line-gradient requires per-vertex distance, which only lineMetrics computes.
+  if (!map.getSource(SRC_FLIGHT_TRAILS)) {
+    map.addSource(SRC_FLIGHT_TRAILS, { type: "geojson", data: EMPTY, lineMetrics: true });
   }
   for (const layer of LAYERS) {
     if (!map.getLayer(layer.id)) map.addLayer(layer);
+  }
+}
+
+export function setFlightsVisible(map: MapLibreMap, visible: boolean): void {
+  map.setLayoutProperty(LAYER_FLIGHTS, "visibility", visible ? "visible" : "none");
+}
+
+export function setFlightTrailsVisible(map: MapLibreMap, visible: boolean): void {
+  map.setLayoutProperty(LAYER_FLIGHT_TRAILS, "visibility", visible ? "visible" : "none");
+}
+
+// Frame data (the ash polygons) is always fetched and kept warm; only its
+// visibility follows the Ash checkbox, so re-enabling it is instant.
+export function setAshFramesVisible(map: MapLibreMap, visible: boolean): void {
+  for (const id of ASH_FRAME_LAYERS) {
+    map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
   }
 }
 

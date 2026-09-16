@@ -130,6 +130,8 @@ class Pipeline:
     ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
         if observation.normalized.get("kind") == "THERMAL_ANOMALY":
             return self._process_thermal(observation)
+        if observation.normalized.get("kind") == "ASH_ADVISORY":
+            return self._process_ash_advisory(observation)
 
         if observation.hazard_type == HazardType.EARTHQUAKE:
             return self._process_earthquake(observation)
@@ -423,6 +425,112 @@ class Pipeline:
             if distance <= best_km:
                 best, best_km = event, distance
         return best
+
+    def _process_ash_advisory(
+        self, observation: Observation
+    ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
+        """An ash advisory from an automated feed (e.g. an international SIGMET's
+        VA record), built the same way a pasted VAA bulletin is in
+        _ingest_vaa_sync, but from fields the adapter already parsed rather than
+        raw bulletin text."""
+        normalized = observation.normalized
+
+        match = resolve_volcano(
+            self.volcano_catalogue(),
+            name=normalized.get("volcano_name"),
+            longitude=normalized.get("longitude"),
+            latitude=normalized.get("latitude"),
+        )
+        volcano_id = match.volcano.id if match else None
+
+        existing = self._open_volcano_event(volcano_id) if volcano_id else None
+        previous = existing
+        event_id = existing.id if existing else new_id("evt")
+
+        issue_time = normalized.get("issue_time") or utcnow()
+        advisory_number = normalized.get("advisory_number") or issue_time.strftime("%Y%m%d%H%M")
+        source = normalized.get("vaac") or observation.provider
+
+        frames: list[GeometryFrame] = []
+        for item in normalized.get("frames", []):
+            valid_time = item.get("valid_time") or issue_time
+            frames.append(
+                GeometryFrame(
+                    id=new_id("frame"),
+                    event_id=event_id,
+                    geometry_type=GeometryType.ASH_CLOUD,
+                    frame_kind=FrameKind(item["kind"]),
+                    valid_time=valid_time,
+                    lead_hours=item.get("lead_hours"),
+                    lower_altitude_m=_fl_to_m(item.get("bottom_flight_level")),
+                    upper_altitude_m=_fl_to_m(item.get("top_flight_level")),
+                    geometry=item["geometry"],
+                    source_provider=source,
+                    source_ref=str(advisory_number),
+                    properties={
+                        "bottomFlightLevel": item.get("bottom_flight_level"),
+                        "topFlightLevel": item.get("top_flight_level"),
+                    },
+                )
+            )
+
+        longitude = normalized.get("longitude")
+        latitude = normalized.get("latitude")
+        if longitude is None and match:
+            longitude, latitude = match.volcano.longitude, match.volcano.latitude
+
+        event = HazardEvent(
+            id=event_id,
+            hazard_type=HazardType.ASH,
+            state=previous.state if previous else EventState.PRELIMINARY,
+            provenance_class=ProvenanceClass.AUTHORITATIVE_NOTICE,
+            quality=Quality.OFFICIAL_ADVISORY if frames else Quality.UNAVAILABLE,
+            origin_time=normalized.get("observation_time") or issue_time,
+            first_observed_at=normalized.get("observation_time") or issue_time,
+            first_ingested_at=previous.first_ingested_at if previous else utcnow(),
+            last_updated_at=utcnow(),
+            revision=(previous.revision + 1) if previous else 1,
+            longitude=longitude,
+            latitude=latitude,
+            confidence=0.95 if frames else 0.6,
+            confidence_reasons=["AUTOMATED_SIGMET_VA"],
+            source_refs=previous.source_refs if previous else [],
+        )
+        event.summary.volcano_id = volcano_id
+        event.summary.volcano_name = normalized.get("volcano_name")
+        event.summary.place = normalized.get("area")
+
+        changes = diff_events(previous, event)
+        self.events.save(event, changes, DECISION_VERSION)
+        self.events.link(event_id, observation.message_id, 1.0, ["VOLCANIC_ASH_SIGMET"])
+
+        if frames:
+            self.frames.replace_for_event(event_id, frames)
+
+        self.advisories.save(
+            AshAdvisory(
+                advisory_id=f"{source}_{advisory_number}".replace("/", "_"),
+                event_id=event_id,
+                volcano_id=volcano_id,
+                volcano_name=normalized.get("volcano_name"),
+                issue_time=issue_time,
+                observation_time=normalized.get("observation_time"),
+                status=normalized.get("status", "ACTIVE"),
+                source=source,
+                altitude=AshAltitude(
+                    bottom_flight_level=normalized.get("bottom_flight_level"),
+                    top_flight_level=normalized.get("top_flight_level"),
+                    bottom_meters=normalized.get("bottom_metres"),
+                    top_meters=normalized.get("top_metres"),
+                ),
+                movement=AshMovement(**normalized.get("movement", {})),
+                geometry_quality=Quality.OFFICIAL_ADVISORY if frames else Quality.UNAVAILABLE,
+                raw_bulletin=normalized.get("raw_text", ""),
+                parser_version=normalized.get("parser_version", ""),
+                parser_warnings=normalized.get("warnings", []),
+            )
+        )
+        return event, previous, changes
 
     async def ingest_vaa_bulletin(self, text: str, source: str = "MANUAL") -> HazardEvent | None:
         """Parse a VAA bulletin into an ash event with time-valid frames."""

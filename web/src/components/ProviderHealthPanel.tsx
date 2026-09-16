@@ -32,26 +32,28 @@ export function ProviderHealthPanel({
         </span>
       </header>
 
-      {open || degraded.length > 0 ? (
+      {open ? (
         <div className="panel-body pad">
-          {(open ? providers : degraded).map((provider) => (
-            <div
-              key={provider.provider}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "3px 0",
-                fontSize: 11,
-              }}
-            >
-              <i className={`dot ${provider.state}`} />
-              <span style={{ flex: 1 }}>{provider.provider}</span>
-              <span style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)", fontSize: 10 }}>
-                {provider.state === "DISABLED"
-                  ? "off"
-                  : ago(provider.lastMessageAgeSeconds)}
-              </span>
+          {providers.map((provider) => (
+            <div key={provider.provider} style={{ padding: "3px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                <i className={`dot ${provider.state}`} />
+                <span style={{ flex: 1 }}>{provider.provider}</span>
+                <span
+                  style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)", fontSize: 10 }}
+                >
+                  {provider.state === "DISABLED"
+                    ? "off"
+                    : ago(provider.lastMessageAgeSeconds)}
+                </span>
+              </div>
+              {provider.lastError ? (
+                <div
+                  style={{ color: "var(--warn)", fontSize: 10, paddingLeft: 16, marginTop: 1 }}
+                >
+                  {provider.lastError}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

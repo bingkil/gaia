@@ -13,7 +13,7 @@ const SEVERITY_SCALE = [
 ];
 
 export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <section className="panel glass">

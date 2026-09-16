@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
   HazardEvent,
+  HazardType,
   Meta,
   NotificationRecord,
   ProviderRecord,
@@ -12,8 +13,10 @@ import { type TimeRange, rangeParams } from "./timeRange";
 import type { TimeZonePref } from "./timeZone";
 import { useRealtime } from "./useRealtime";
 
+export const ALL_HAZARD_TYPES: HazardType[] = ["EARTHQUAKE", "VOLCANO", "ASH", "WILDFIRE"];
+
 export interface Filters {
-  hazardType: string;
+  hazardTypes: HazardType[];
   minMagnitude: number | undefined;
   range: TimeRange;
 }
@@ -56,8 +59,20 @@ export function useGaiaData(filters: Filters, zone: TimeZonePref): GaiaData {
   }, []);
 
   const reloadEvents = useCallback(() => {
+    // A checkbox row with nothing ticked means "show nothing": the API has no
+    // way to ask for zero hazard types, so that case is handled without a request.
+    if (filtersRef.current.hazardTypes.length === 0) {
+      setEvents([]);
+      setEventFeatures(EMPTY);
+      setFrames(EMPTY);
+      setError(null);
+      return;
+    }
     const query = {
-      hazardType: filtersRef.current.hazardType,
+      hazardType:
+        filtersRef.current.hazardTypes.length === ALL_HAZARD_TYPES.length
+          ? undefined
+          : filtersRef.current.hazardTypes.join(","),
       minMagnitude: filtersRef.current.minMagnitude,
       ...rangeParams(filtersRef.current.range, zoneRef.current),
     };
@@ -92,7 +107,7 @@ export function useGaiaData(filters: Filters, zone: TimeZonePref): GaiaData {
 
   useEffect(() => {
     reloadEvents();
-  }, [reloadEvents, filters.hazardType, filters.minMagnitude, filters.range, zone]);
+  }, [reloadEvents, filters.hazardTypes, filters.minMagnitude, filters.range, zone]);
 
   const onChange = useCallback(
     (subjects: Set<string>) => {

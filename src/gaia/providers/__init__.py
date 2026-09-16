@@ -4,6 +4,7 @@ from .emsc import EmscAdapter
 from .firms import FirmsAdapter
 from .gdacs import GdacsAdapter
 from .geofon import GeofonAdapter
+from .isigmet import IsigmetAdapter
 from .usgs import UsgsAdapter
 
 ADAPTERS = {
@@ -12,6 +13,7 @@ ADAPTERS = {
     "geofon": GeofonAdapter,
     "gdacs": GdacsAdapter,
     "firms": FirmsAdapter,
+    "isigmet": IsigmetAdapter,
 }
 
 __all__ = [
@@ -22,6 +24,7 @@ __all__ = [
     "GdacsAdapter",
     "GeofonAdapter",
     "HazardAdapter",
+    "IsigmetAdapter",
     "PollingAdapter",
     "StreamingAdapter",
     "UsgsAdapter",
