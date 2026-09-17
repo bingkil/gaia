@@ -1,6 +1,6 @@
 [project]
 name = "gaia"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local-first geohazard situational-awareness platform: earthquakes, volcanic eruptions, and volcanic ash"
 readme = "README.md"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"

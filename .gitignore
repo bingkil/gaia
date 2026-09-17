@@ -7,7 +7,7 @@ __pycache__/
 .ruff_cache/
 
 # Local data: raw payloads, SQLite database, downloaded tiles
-data/
+/data/
 
 # Node / frontend build
 node_modules/
