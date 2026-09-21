@@ -15,6 +15,10 @@ export const SRC_AERIAL = "gaia-aerial";
 export const SRC_LIVE = "gaia-live";
 export const SRC_FLIGHTS = "gaia-flights";
 export const SRC_FLIGHT_TRAILS = "gaia-flight-trails";
+export const SRC_DAYNIGHT = "gaia-daynight";
+export const SRC_TIMEZONES = "gaia-timezones";
+export const LAYER_TIMEZONES_FILL = "gaia-timezones-fill";
+export const LAYER_TIMEZONES_LINE = "gaia-timezones-line";
 export const LAYER_EVENT_ICONS = "gaia-event-icons";
 export const LAYER_EVENT_HALO = "gaia-event-halo";
 export const LAYER_QUAKE_PULSE = "gaia-quake-pulse";
@@ -278,6 +282,98 @@ export function addLiveImagery(map: MapLibreMap, date: string): void {
 export function setLiveImageryDate(map: MapLibreMap, date: string): void {
   const source = map.getSource(SRC_LIVE) as RasterTileSource | undefined;
   source?.setTiles(liveTiles(date));
+}
+
+/**
+ * A light choropleth of UTC-offset zones (Natural Earth's `ne_10m_time_zones`,
+ * simplified to ~280 KB — the full timezone-boundary-builder dataset is
+ * hundreds of MB and meant for server-side lookup, not a client fill layer).
+ * Sits above imagery but below the day/night shading, so night still dims it.
+ */
+export function addTimezones(map: MapLibreMap): void {
+  if (map.getLayer(LAYER_TIMEZONES_FILL)) return;
+  if (!map.getSource(SRC_TIMEZONES)) {
+    map.addSource(SRC_TIMEZONES, { type: "geojson", data: "/data/timezones.geojson" });
+  }
+  const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+  map.addLayer(
+    {
+      id: LAYER_TIMEZONES_FILL,
+      type: "fill",
+      source: SRC_TIMEZONES,
+      layout: { visibility: "none" },
+      paint: {
+        "fill-color": [
+          "interpolate",
+          ["linear"],
+          ["get", "zone"],
+          -12,
+          "#3182ce",
+          0,
+          "#38a169",
+          14,
+          "#d69e2e",
+        ],
+        "fill-opacity": 0.12,
+      },
+    },
+    firstSymbol,
+  );
+  map.addLayer(
+    {
+      id: LAYER_TIMEZONES_LINE,
+      type: "line",
+      source: SRC_TIMEZONES,
+      layout: { visibility: "none" },
+      paint: { "line-color": "rgba(255, 255, 255, 0.35)", "line-width": 0.75 },
+    },
+    firstSymbol,
+  );
+}
+
+export function setTimezonesVisible(map: MapLibreMap, visible: boolean): void {
+  const visibility = visible ? "visible" : "none";
+  map.setLayoutProperty(LAYER_TIMEZONES_FILL, "visibility", visibility);
+  map.setLayoutProperty(LAYER_TIMEZONES_LINE, "visibility", visibility);
+}
+
+/**
+ * Four nested fills, one per twilight band (see `dayNight.ts`), each a flat
+ * translucent black. Layered bottom (band 0, sunset/sunrise line) to top
+ * (band 3, full night), their overlaps darken progressively — a soft
+ * gradient without a raster layer. Drawn above imagery/timezones, below
+ * event markers, so hazard icons stay legible after dark.
+ */
+const DAYNIGHT_BAND_LAYERS = [
+  "gaia-daynight-0",
+  "gaia-daynight-1",
+  "gaia-daynight-2",
+  "gaia-daynight-3",
+] as const;
+const DAYNIGHT_BAND_OPACITY = [0.18, 0.16, 0.14, 0.22];
+
+export function addDayNight(map: MapLibreMap): void {
+  if (map.getLayer(DAYNIGHT_BAND_LAYERS[0])) return;
+  if (!map.getSource(SRC_DAYNIGHT)) map.addSource(SRC_DAYNIGHT, { type: "geojson", data: EMPTY });
+  const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+  DAYNIGHT_BAND_LAYERS.forEach((id, band) => {
+    map.addLayer(
+      {
+        id,
+        type: "fill",
+        source: SRC_DAYNIGHT,
+        filter: ["==", ["get", "band"], band],
+        layout: { visibility: "none" },
+        paint: { "fill-color": "#00030f", "fill-opacity": DAYNIGHT_BAND_OPACITY[band] },
+      },
+      firstSymbol,
+    );
+  });
+}
+
+export function setDayNightVisible(map: MapLibreMap, visible: boolean): void {
+  const visibility = visible ? "visible" : "none";
+  for (const id of DAYNIGHT_BAND_LAYERS) map.setLayoutProperty(id, "visibility", visibility);
 }
 
 /**

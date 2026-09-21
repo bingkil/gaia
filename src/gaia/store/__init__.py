@@ -8,6 +8,7 @@ from .repo import (
     ProviderHealthRepo,
     VolcanoRepo,
     WatchAreaRepo,
+    WebcamRepo,
     new_id,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "RawStore",
     "VolcanoRepo",
     "WatchAreaRepo",
+    "WebcamRepo",
     "new_id",
 ]

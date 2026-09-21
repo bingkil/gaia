@@ -87,9 +87,19 @@ export interface HazardEvent {
   providers: string[];
 }
 
+export interface HazardMap {
+  volcanoName: string;
+  year: number;
+  imageUrl: string;
+  sourceUrl: string;
+  attribution: string;
+}
+
 export interface EventDetail extends HazardEvent {
   frames: GeometryFrame[];
   advisories: Record<string, unknown>[];
+  webcams: Webcam[];
+  hazardMap: HazardMap | null;
 }
 
 export interface GeometryFrame {
@@ -186,6 +196,23 @@ export interface WatchArea {
   min_magnitude: number;
   radius_km: number;
   enabled: boolean;
+}
+
+export interface Webcam {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  hazard_types: HazardType[];
+  stream_url: string | null;
+  image_url: string | null;
+  thumbnail_url: string | null;
+  source_url: string | null;
+  attribution: string | null;
+  enabled: boolean;
+  stream_status: "OK" | "UNREACHABLE" | "UNCHECKED" | string;
+  image_status: "OK" | "UNREACHABLE" | "UNCHECKED" | string;
+  last_checked_at: string | null;
 }
 
 export interface ProviderRecord {

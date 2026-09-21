@@ -28,7 +28,9 @@ FIELD_AUTHORITY: dict[str, dict[str, int]] = {
     "magnitude": {"USGS": 3, "GEOFON": 3, "EMSC": 2, "GDACS": 0, "FIRMS": 0},
     "depth": {"USGS": 3, "GEOFON": 3, "EMSC": 2, "GDACS": 0, "FIRMS": 0},
     "place": {"EMSC": 3, "USGS": 3, "GEOFON": 1, "GDACS": 2, "FIRMS": 0},
-    "volcano": {"GDACS": 3, "FIRMS": 1},
+    # VONA is the observatory's own notice, so it outranks GDACS's
+    # VAA/Smithsonian-derived reporting for the volcano's name/alert level.
+    "volcano": {"VONA": 4, "GDACS": 3, "FIRMS": 1},
 }
 
 _EARTHQUAKE_PROVIDERS = {"EMSC", "USGS", "GEOFON"}
@@ -73,6 +75,11 @@ def classify_provenance(
             return ProvenanceClass.MULTISOURCE_RAPID, reasons
         reasons.append("SINGLE_SOURCE")
         return ProvenanceClass.SINGLE_SOURCE_RAPID, reasons
+
+    # A VONA is an observatory's own official notice, the same standing as a VAA.
+    if "VONA" in providers:
+        reasons.append("OFFICIAL_OBSERVATORY_NOTICE")
+        return ProvenanceClass.AUTHORITATIVE_NOTICE, reasons
 
     # Volcanic or fire: a satellite heat signal alone is only an automated signal.
     if providers == {"FIRMS"}:

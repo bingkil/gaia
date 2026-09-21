@@ -62,6 +62,24 @@ authority's own feed corroborates it.
   last hours or days, independent of the live view.
 - **Replay from stored raw payloads**: every provider response is kept as received, so a
   parsing fix can be re-applied without re-fetching anything.
+- **VONA volcano status**: USGS Volcano Observatory Notice for Aviation feed for
+  US-territory volcanoes (AVO, CalVO, CVO, HVO, YVO); only elevated alert levels
+  (ADVISORY/WATCH/WARNING) are surfaced as events.
+- **Official Indonesian hazard zone (KRB) maps**: PVMBG's Kawasan Rawan Bencana
+  reference map for a volcano opens in a zoomable, pannable modal from the event
+  detail view.
+- **Webcams**: a user-managed catalogue of volcano webcams, auto-seeded with 11
+  Indonesian MAGMA CCTV link-outs and 2 Hawaiian USGS HVO live-image cameras. Each
+  entry falls back through live stream → refreshing snapshot → static thumbnail →
+  source link, matched to nearby events by hazard type and distance, and previewed
+  in a modal from the Webcams panel; rows are clickable to pan the map to that
+  location.
+- **Day/night shading**: an optional map overlay showing the current terminator, with
+  a soft civil/nautical/astronomical twilight gradient computed from the sun's
+  position — no external tiles required.
+- **Timezone layer**: an optional overlay of timezone boundaries; clicking a zone
+  shows its name and current local time/offset, computed live so daylight saving is
+  reflected correctly.
 
 ### Real-time satellite basemap
 
@@ -80,6 +98,9 @@ service.
 | USGS | Independent earthquake confirmation | Review USGS terms before redistribution |
 | GEOFON / GFZ Potsdam | Independent earthquake catalogue | Review GEOFON terms |
 | GDACS | Volcanic events and context | Attribution required; information is indicative |
+| USGS Volcano Hazards Program | VONA volcano alert-level status (US territory) | Public, no key required |
+| PVMBG / MAGMA Indonesia | Official KRB hazard zone maps, and webcam link-outs for Indonesian volcanoes | Public; attribution required |
+| USGS HVO | Hawaiian volcano webcams | Public; attribution required |
 | NOAA Aviation Weather Center | International SIGMET volcanic ash advisories | Public, no key required |
 | NASA FIRMS | Satellite thermal anomalies (wildfire detection) | Free map key required |
 | NASA GIBS | Satellite true-colour imagery (real-time basemap) | Public, no key required; attribution required |

@@ -8,10 +8,12 @@ import {
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
+import tzlookup from "tz-lookup";
 import type { EventFeatureProperties, SeismicModel, WatchArea } from "../api/types";
 import { ago, coordText, frpText, magnitudeText } from "../components/format";
 import { PROVENANCE_MARKS } from "../components/ProvenanceBadge";
 import { circlePolygon, framesAt, surfaceWaveRadiusKm } from "./geometry";
+import { computeDayNightBands } from "./dayNight";
 import {
   airlineFromCallsign,
   type FlightFeatureProperties,
@@ -27,7 +29,9 @@ import {
   LAYER_FLIGHTS,
   LAYER_LIVE,
   LAYER_QUAKE_PULSE,
+  LAYER_TIMEZONES_FILL,
   PULSE_WINDOW_SECONDS,
+  SRC_DAYNIGHT,
   SRC_EVENTS,
   SRC_FLIGHT_TRAILS,
   SRC_FLIGHTS,
@@ -35,14 +39,18 @@ import {
   SRC_WATCH,
   SRC_WAVEFRONT,
   addAerial,
+  addDayNight,
   addLayers,
   addLiveImagery,
+  addTimezones,
   pulsePaint,
   setAshFramesVisible,
   setData,
+  setDayNightVisible,
   setFlightsVisible,
   setFlightTrailsVisible,
   setLiveImageryDate,
+  setTimezonesVisible,
 } from "./layers";
 import {
   FLAME_PATH,
@@ -82,6 +90,9 @@ const FLIGHTS_POLL_MS = 25000;
 /** Fixes per aircraft kept for its trail; at one fix per poll this covers a couple of minutes. */
 const TRAIL_MAX_POINTS = 8;
 
+/** The terminator moves slowly enough that a minute's staleness is never visible. */
+const DAYNIGHT_REFRESH_MS = 60000;
+
 export interface MapFocus {
   longitude: number;
   latitude: number;
@@ -106,6 +117,8 @@ interface Props {
   showFlights: boolean;
   showFlightTrails: boolean;
   showAsh: boolean;
+  showDayNight: boolean;
+  showTimezones: boolean;
   onFlightsData: (flights: GeoJSON.FeatureCollection) => void;
   onFlightsStatus: (status: { loading: boolean; error: string | null }) => void;
 }
@@ -417,6 +430,8 @@ export function MapView(props: Props): React.JSX.Element {
       addLayers(map);
       addAerial(map);
       addLiveImagery(map, latest.current.imageryDate);
+      addTimezones(map);
+      addDayNight(map);
       readyRef.current = true;
       map.getContainer().dataset["mapReady"] = "true";
 
@@ -427,6 +442,11 @@ export function MapView(props: Props): React.JSX.Element {
       setFlightsVisible(map, latest.current.showFlights);
       setFlightTrailsVisible(map, latest.current.showFlights && latest.current.showFlightTrails);
       setAshFramesVisible(map, latest.current.showAsh);
+      setTimezonesVisible(map, latest.current.showTimezones);
+      if (latest.current.showDayNight) {
+        setDayNightVisible(map, true);
+        setData(map, SRC_DAYNIGHT, computeDayNightBands(new Date()));
+      }
       if (latest.current.showFlights) pollFlights(map);
       map.setFilter(LAYER_EVENT_HALO, [
         "==",
@@ -447,6 +467,53 @@ export function MapView(props: Props): React.JSX.Element {
     map.on("click", (event) => {
       if (!latest.current.pickMode) return;
       latest.current.onPickLocation(event.lngLat.lng, event.lngLat.lat);
+    });
+
+    // Natural Earth's polygons only carry a fixed standard-time offset, so the
+    // fill color is an approximation — the popup instead looks up the real
+    // IANA zone for the clicked point and asks Intl for today's actual
+    // (DST-aware) offset and time, which is always correct for "right now".
+    map.on("click", LAYER_TIMEZONES_FILL, (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      const properties = feature.properties as { places?: string } | null;
+      const { lat, lng } = event.lngLat;
+      const container = document.createElement("div");
+      container.className = "map-tip-tz";
+      const title = document.createElement("b");
+      const time = document.createElement("div");
+      const zoneLine = document.createElement("div");
+      try {
+        const tzid = tzlookup(lat, lng);
+        const now = new Date();
+        const offset = new Intl.DateTimeFormat("en-US", {
+          timeZone: tzid,
+          timeZoneName: "longOffset",
+        })
+          .formatToParts(now)
+          .find((part) => part.type === "timeZoneName")?.value;
+        const zoneName = new Intl.DateTimeFormat("en-US", {
+          timeZone: tzid,
+          timeZoneName: "long",
+        })
+          .formatToParts(now)
+          .find((part) => part.type === "timeZoneName")?.value;
+        const clock = new Intl.DateTimeFormat("en-US", {
+          timeZone: tzid,
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(now);
+        title.textContent = tzid.replace(/_/g, " ");
+        time.textContent = `${clock} · ${offset ?? ""}`;
+        zoneLine.textContent = zoneName ?? "";
+      } catch {
+        title.textContent = properties?.places ?? "Timezone";
+      }
+      container.append(title, time, zoneLine);
+      new Popup({ maxWidth: "240px", className: "map-tip-tz-popup" })
+        .setLngLat(event.lngLat)
+        .setDOMContent(container)
+        .addTo(map);
     });
 
     const tip = new Popup({
@@ -693,6 +760,34 @@ export function MapView(props: Props): React.JSX.Element {
     if (!map || !readyRef.current) return;
     setAshFramesVisible(map, props.showAsh);
   }, [props.showAsh]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    setTimezonesVisible(map, props.showTimezones);
+  }, [props.showTimezones]);
+
+  // Recomputed on a slow timer rather than once: the terminator drifts about
+  // a degree every four minutes, which would look stale left alone for long.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!props.showDayNight) {
+      if (map && readyRef.current) setDayNightVisible(map, false);
+      return;
+    }
+    const update = (): void => {
+      const current = mapRef.current;
+      if (current && readyRef.current) {
+        setData(current, SRC_DAYNIGHT, computeDayNightBands(new Date()));
+      }
+    };
+    if (map && readyRef.current) {
+      setDayNightVisible(map, true);
+      update();
+    }
+    const interval = window.setInterval(update, DAYNIGHT_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [props.showDayNight]);
 
   return <div className="map-root" ref={containerRef} />;
 }

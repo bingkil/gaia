@@ -91,6 +91,18 @@ class IsigmetSettings(ProviderSettings):
     attribution: str = "NOAA Aviation Weather Center, international SIGMET"
 
 
+class VonaSettings(ProviderSettings):
+    # US territory only - PVMBG (Indonesia) has no equivalent public feed.
+    feed_url: str = "https://volcanoes.usgs.gov/vsc/api/volcanoApi/regionstatus"
+    lat1: float = -90.0
+    long1: float = -180.0
+    lat2: float = 90.0
+    long2: float = 180.0
+    poll_seconds: float = 900.0
+    stale_after_seconds: float = 3600.0
+    attribution: str = "U.S. Geological Survey, Volcano Observatory Notice for Aviation (VONA)"
+
+
 class OpenSkySettings(BaseModel):
     # OAuth2 client credentials from https://opensky-network.org/my-opensky/account.
     # Set GAIA_OPENSKY__CLIENT_ID / GAIA_OPENSKY__CLIENT_SECRET. Anonymous access
@@ -106,6 +118,16 @@ class Providers(BaseModel):
     gdacs: GdacsSettings = GdacsSettings()
     firms: FirmsSettings = FirmsSettings(enabled=False)
     isigmet: IsigmetSettings = IsigmetSettings()
+    vona: VonaSettings = VonaSettings()
+
+
+class WebcamSettings(BaseModel):
+    """Background reachability checking for user-added webcams."""
+
+    enabled: bool = True
+    poll_seconds: float = 900.0
+    check_timeout_seconds: float = 8.0
+    match_radius_km: float = 300.0
 
 
 class CorrelationSettings(BaseModel):
@@ -161,6 +183,7 @@ class Settings(BaseSettings):
     seismic_model: ModelSettings = ModelSettings()
     alerts: AlertSettings = AlertSettings()
     opensky: OpenSkySettings = OpenSkySettings()
+    webcams: WebcamSettings = WebcamSettings()
 
     @property
     def db_path(self) -> Path:

@@ -9,10 +9,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gaia.api.app import create_app
-from gaia.config import IsigmetSettings, Settings
+from gaia.config import IsigmetSettings, Settings, VonaSettings
 from gaia.domain.enums import Action, HazardType
 from gaia.domain.models import Observation
 from gaia.providers.isigmet import IsigmetAdapter
+from gaia.providers.vona import VonaAdapter
 
 VAA_BULLETIN = """FVAU01 ADRM 131800
 VA ADVISORY
@@ -271,6 +272,131 @@ class TestWatchAreas:
         assert decisions[0]["reasonCodes"]
 
 
+class TestWebcams:
+    def test_catalogue_is_seeded_on_startup(self, client):
+        webcams = client.get("/v1/webcams").json()["webcams"]
+        assert len(webcams) == 13
+
+        names = {w["name"] for w in webcams}
+        assert any(name.startswith("Bromo") for name in names)
+        assert any("Kilauea" in name for name in names)
+
+        # Indonesian entries link out to MAGMA Indonesia rather than
+        # embedding an image (CCTV images require a session/token).
+        bromo = next(w for w in webcams if w["name"].startswith("Bromo"))
+        assert bromo["image_url"] is None
+        assert bromo["source_url"].startswith("https://magma.esdm.go.id/")
+
+        # HVO entries embed a direct, hotlinkable still image.
+        kilauea = next(w for w in webcams if "Kilauea" in w["name"])
+        assert kilauea["image_url"].startswith("https://volcanoes.usgs.gov/")
+
+    def test_seeding_does_not_resurrect_a_deleted_webcam(self, client):
+        webcams = client.get("/v1/webcams").json()["webcams"]
+        bromo_id = next(w["id"] for w in webcams if w["name"].startswith("Bromo"))
+
+        assert client.delete(f"/v1/webcams/{bromo_id}").status_code == 204
+
+        # Re-seeding (as would happen on the next app startup against the
+        # same database) must not bring the deleted webcam back, because
+        # the seed is gated on the table being empty, not per-row.
+        runtime = client.app.state.runtime
+        assert runtime.seed_webcams() == 0
+
+        webcams_after = client.get("/v1/webcams").json()["webcams"]
+        assert len(webcams_after) == 12
+        assert all(w["id"] != bromo_id for w in webcams_after)
+
+    def test_create_list_update_delete(self, client):
+        baseline = client.get("/v1/webcams").json()["webcams"]
+
+        created = client.post(
+            "/v1/webcams",
+            json={
+                "name": "Ridge cam",
+                "latitude": 38.32,
+                "longitude": 22.11,
+                "hazardTypes": ["EARTHQUAKE"],
+                "imageUrl": "https://example.invalid/latest.jpg",
+            },
+        )
+        assert created.status_code == 201
+        body = created.json()
+        webcam_id = body["id"]
+        assert body["stream_status"] == "UNCHECKED"
+        assert body["image_status"] == "UNCHECKED"
+
+        listed = client.get("/v1/webcams").json()["webcams"]
+        assert len(listed) == len(baseline) + 1
+
+        updated = client.put(
+            f"/v1/webcams/{webcam_id}",
+            json={
+                "name": "Ridge cam (renamed)",
+                "latitude": 38.32,
+                "longitude": 22.11,
+                "hazardTypes": ["EARTHQUAKE", "VOLCANO"],
+                "imageUrl": "https://example.invalid/latest.jpg",
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Ridge cam (renamed)"
+        assert set(updated.json()["hazard_types"]) == {"EARTHQUAKE", "VOLCANO"}
+
+        assert client.delete(f"/v1/webcams/{webcam_id}").status_code == 204
+        assert client.get("/v1/webcams").json()["webcams"] == baseline
+
+
+    def test_recheck_sets_last_checked_at_without_network(self, client):
+        created = client.post(
+            "/v1/webcams",
+            json={
+                "name": "Unconfigured cam",
+                "latitude": 38.32,
+                "longitude": 22.11,
+                "hazardTypes": ["EARTHQUAKE"],
+            },
+        )
+        webcam_id = created.json()["id"]
+        assert created.json()["last_checked_at"] is None
+
+        rechecked = client.post(f"/v1/webcams/{webcam_id}/recheck")
+        assert rechecked.status_code == 200
+        assert rechecked.json()["last_checked_at"] is not None
+        assert rechecked.json()["stream_status"] == "UNCHECKED"
+        assert rechecked.json()["image_status"] == "UNCHECKED"
+
+    def test_recheck_missing_webcam_is_404(self, client):
+        assert client.post("/v1/webcams/nope/recheck").status_code == 404
+
+    def test_event_detail_includes_nearby_matching_webcams(self, client):
+        client.post(
+            "/v1/webcams",
+            json={
+                "name": "Near the quake",
+                "latitude": 38.32,
+                "longitude": 22.11,
+                "hazardTypes": ["EARTHQUAKE"],
+                "imageUrl": "https://example.invalid/latest.jpg",
+            },
+        )
+        client.post(
+            "/v1/webcams",
+            json={
+                "name": "Wrong hazard type",
+                "latitude": 38.32,
+                "longitude": 22.11,
+                "hazardTypes": ["VOLCANO"],
+                "imageUrl": "https://example.invalid/latest.jpg",
+            },
+        )
+        seed_quake(client, magnitude=6.1)
+
+        event_id = client.get("/v1/events").json()["events"][0]["id"]
+        webcams = client.get(f"/v1/events/{event_id}").json()["webcams"]
+        assert [w["name"] for w in webcams] == ["Near the quake"]
+
+
 class TestVaaIngest:
     def test_bulletin_becomes_an_ash_event_with_frames(self, client):
         response = client.post("/v1/ingest/vaa", json={"bulletin": VAA_BULLETIN})
@@ -299,6 +425,23 @@ class TestVaaIngest:
     def test_garbage_bulletin_is_rejected_not_invented(self, client):
         response = client.post("/v1/ingest/vaa", json={"bulletin": "hello world"})
         assert response.status_code == 422
+
+    def test_event_detail_includes_official_hazard_zone_map(self, client):
+        event_id = (
+            client.post("/v1/ingest/vaa", json={"bulletin": VAA_BULLETIN})
+            .json()["event"]["id"]
+        )
+        hazard_map = client.get(f"/v1/events/{event_id}").json()["hazardMap"]
+
+        assert hazard_map["volcanoName"] == "Semeru"
+        assert hazard_map["imageUrl"].startswith("https://magma.esdm.go.id/")
+        assert "PVMBG" in hazard_map["attribution"]
+
+    def test_hazard_map_is_absent_for_earthquakes(self, client):
+        seed_quake(client, magnitude=6.1)
+        event_id = client.get("/v1/events").json()["events"][0]["id"]
+
+        assert client.get(f"/v1/events/{event_id}").json()["hazardMap"] is None
 
 
 class TestIsigmetIngest:
@@ -367,6 +510,50 @@ class TestIsigmetIngest:
 
         advisories = client.get(f"/v1/events/{event.id}").json()["advisories"]
         assert advisories[0]["altitude"]["top_flight_level"] == 70
+
+
+class TestVonaIngest:
+    """A per-volcano status record from USGS's VONA-derived regionstatus feed."""
+
+    RECORD = {
+        "vName": "Redoubt",
+        "lat": 60.4852,
+        "long": -152.7438,
+        "vnum": "313030",
+        "volcanoCd": "VNUM313030",
+        "obs": "avo",
+        "region": "Alaska Peninsula",
+        "noticeId": "DOI-USGS-AVO-2026-09-01T12:00:00-08:00",
+        "noticeSynopsis": "Seismic unrest continues beneath Redoubt Volcano.",
+        "alertLevel": "WATCH",
+        "colorCode": "ORANGE",
+        "alertDate": "2026-09-01 20:00:00",
+        "colorDate": "2026-09-01 20:00:00",
+    }
+
+    def _ingest(self, client, record):
+        runtime = client.app.state.runtime
+        adapter = VonaAdapter(ctx=None, settings=VonaSettings())
+        records = adapter.parse(json.dumps([record]).encode())
+        observation = adapter.to_observation(records[0], "raw/vona-test", "sha")
+        runtime.observations.insert(observation)
+        return client.portal.call(runtime.pipeline.handle_observation, observation)
+
+    def test_elevated_alert_becomes_an_authoritative_volcano_event(self, client):
+        event = self._ingest(client, self.RECORD)
+
+        assert event.hazard_type.value == "VOLCANO"
+        assert event.provenance_class.value == "AUTHORITATIVE_NOTICE"
+        assert event.summary.volcano_name == "Redoubt"
+
+        events = client.get("/v1/events").json()["events"]
+        assert any(e["id"] == event.id for e in events)
+
+    def test_normal_alert_level_produces_no_observation(self):
+        adapter = VonaAdapter(ctx=None, settings=VonaSettings())
+        record = dict(self.RECORD, alertLevel="NORMAL", colorCode="GREEN")
+
+        assert adapter.parse(json.dumps([record]).encode()) == []
 
 
 class TestProviderHealth:

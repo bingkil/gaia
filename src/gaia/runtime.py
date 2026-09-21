@@ -18,15 +18,19 @@ from .config import Settings
 from .config import settings as default_settings
 from .db import Database, init_db
 from .domain.enums import ProviderHealth
+from .domain.models import Webcam
 from .engine.bus import EventBus
 from .engine.pipeline import Pipeline
 from .providers import ADAPTERS, AdapterContext, seed_catalogue
+from .providers.base import USER_AGENT
+from .providers.webcams_seed import seed_webcams as seed_webcams_catalogue
 from .store import (
     ObservationRepo,
     PollStateRepo,
     ProviderHealthRepo,
     RawStore,
     VolcanoRepo,
+    WebcamRepo,
 )
 from .store.secrets import SecretStore, mask
 
@@ -45,6 +49,23 @@ OPENSKY_ANONYMOUS_DAILY_CREDITS = 400
 OPENSKY_AUTHENTICATED_DAILY_CREDITS = 4000
 
 
+async def _probe_webcam_url(client: httpx.AsyncClient, url: str, timeout: float) -> str:
+    """HEAD first; some webcam hosts reject HEAD, so retry with a 1-byte GET."""
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        response = await client.head(url, headers=headers, timeout=timeout, follow_redirects=True)
+        if response.status_code == 405:
+            response = await client.get(
+                url,
+                headers={**headers, "Range": "bytes=0-0"},
+                timeout=timeout,
+                follow_redirects=True,
+            )
+        return "OK" if response.status_code < 400 else "UNREACHABLE"
+    except httpx.HTTPError:
+        return "UNREACHABLE"
+
+
 class Runtime:
     def __init__(self, settings: Settings | None = None, bus: EventBus | None = None) -> None:
         self.settings = settings or default_settings
@@ -57,6 +78,7 @@ class Runtime:
         self.health = ProviderHealthRepo(self.db)
         self.poll_state = PollStateRepo(self.db)
         self.volcanoes = VolcanoRepo(self.db)
+        self.webcams = WebcamRepo(self.db)
         self.pipeline = Pipeline(self.db, self.settings, self.bus)
 
         self._tasks: list[asyncio.Task] = []
@@ -126,6 +148,20 @@ class Runtime:
         catalogue = seed_catalogue()
         self.volcanoes.upsert_many(catalogue)
         return len(catalogue)
+
+    def seed_webcams(self) -> int:
+        """Populate public reference webcams if none exist yet.
+
+        Gated on the table being empty, not on individual IDs, so an
+        operator who deletes a seeded webcam is not fighting it forever.
+        """
+        if self.webcams.count() > 0:
+            return 0
+        webcams = seed_webcams_catalogue()
+        for webcam in webcams:
+            self.webcams.create(webcam)
+        return len(webcams)
+
 
     def _context(self) -> AdapterContext:
         return AdapterContext(
@@ -272,6 +308,9 @@ class Runtime:
         return self._opensky_token
 
     async def start_ingestion(self) -> None:
+        self._tasks.append(
+            asyncio.create_task(self._webcam_health_loop(), name="webcam-health")
+        )
         if not self.settings.ingest_enabled:
             log.info("ingestion disabled by configuration")
             return
@@ -281,6 +320,43 @@ class Runtime:
             task = asyncio.create_task(adapter.run(), name=f"ingest-{adapter.name}")
             self._tasks.append(task)
         log.info("started %d ingestion adapters", len(self._tasks))
+
+    async def _check_webcam(self, client: httpx.AsyncClient, webcam: Webcam) -> None:
+        timeout = self.settings.webcams.check_timeout_seconds
+        stream_status = (
+            await _probe_webcam_url(client, webcam.stream_url, timeout)
+            if webcam.stream_url
+            else None
+        )
+        image_status = (
+            await _probe_webcam_url(client, webcam.image_url, timeout)
+            if webcam.image_url
+            else None
+        )
+        self.webcams.record_check(webcam.id, stream_status, image_status)
+
+    async def _webcam_health_loop(self) -> None:
+        """Periodically re-checks reachability so a broken link surfaces on its
+        own, per the admin panel's "review and update automatically" goal."""
+        settings = self.settings.webcams
+        if not settings.enabled:
+            return
+        async with httpx.AsyncClient() as client:
+            while True:
+                for webcam in self.webcams.all(enabled_only=True):
+                    try:
+                        await self._check_webcam(client, webcam)
+                    except Exception:
+                        log.exception("webcam health check failed for %s", webcam.id)
+                await asyncio.sleep(settings.poll_seconds)
+
+    async def recheck_webcam(self, webcam_id: str) -> Webcam | None:
+        webcam = self.webcams.get(webcam_id)
+        if webcam is None:
+            return None
+        async with httpx.AsyncClient() as client:
+            await self._check_webcam(client, webcam)
+        return self.webcams.get(webcam_id)
 
     async def stop(self) -> None:
         for task in self._tasks:

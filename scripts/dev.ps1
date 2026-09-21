@@ -80,9 +80,15 @@ function Stop-Dev {
             )) {
             $procId = $entry.id
             if ($procId -and (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
-                Write-Host "==> Stopping $($entry.name) tree (PID $procId)"
-                Stop-ProcessTree $procId
-                $stoppedAny = $true
+                # The PID could have been recycled by Windows for an unrelated
+                # process since we recorded it; verify before killing.
+                if (Test-IsGaiaProcess $procId) {
+                    Write-Host "==> Stopping $($entry.name) tree (PID $procId)"
+                    Stop-ProcessTree $procId
+                    $stoppedAny = $true
+                } else {
+                    Write-Host "==> Saved $($entry.name) PID $procId is no longer a GAIA process (recycled?) - leaving it alone"
+                }
             }
         }
         $ports = @($saved.port, $saved.frontendPort) | Where-Object { $_ }
@@ -113,12 +119,20 @@ function Stop-Dev {
 
 function Start-Dev {
     Set-Location $root
-    $backendPid = $null
-    $frontendPid = $null
-    $frontendPort = $null
-    $backendPort = if ($FrontendOnly) { $Port } else { Find-FreePort $Port }
+    # A -BackendOnly/-FrontendOnly run must not clobber the other side's
+    # already-tracked PID/port, or stop/restart loses track of it and the
+    # frontend can end up pointed at the wrong backend port.
+    $existing = if (Test-Path $pidFile) {
+        try { Get-Content $pidFile -Raw | ConvertFrom-Json } catch { $null }
+    } else { $null }
+
+    $backendPid = if ($existing) { $existing.backend } else { $null }
+    $frontendPid = if ($existing) { $existing.frontend } else { $null }
+    $frontendPort = if ($existing) { $existing.frontendPort } else { $null }
+    $backendPort = if ($existing -and $existing.port) { $existing.port } else { $Port }
 
     if (-not $FrontendOnly) {
+        $backendPort = Find-FreePort $Port
         Write-Host "==> Starting backend on http://127.0.0.1:$backendPort"
         $backendLog = Join-Path $stateDir "backend.log"
         $backend = Start-Process -FilePath "uv" `
@@ -137,6 +151,7 @@ function Start-Dev {
             -PassThru -NoNewWindow -WorkingDirectory (Join-Path $root "web") `
             -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err"
         $frontendPid = $frontend.Id
+        $frontendPort = $null
 
         for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep -Milliseconds 500

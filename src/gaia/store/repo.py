@@ -19,7 +19,7 @@ from ..domain.enums import (
     ProvenanceClass,
     Quality,
 )
-from ..domain.geo import bbox_of
+from ..domain.geo import bbox_of, haversine_km
 from ..domain.models import (
     AshAdvisory,
     EventSummary,
@@ -29,6 +29,7 @@ from ..domain.models import (
     SourceRef,
     Volcano,
     WatchArea,
+    Webcam,
 )
 
 
@@ -535,6 +536,108 @@ class PollStateRepo:
         )
 
 
+class WebcamRepo:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def count(self) -> int:
+        row = self.db.query_one("SELECT COUNT(*) AS n FROM webcam")
+        return int(row["n"]) if row else 0
+
+    def create(self, webcam: Webcam) -> None:
+        self.db.execute(
+            """INSERT INTO webcam
+               (id, name, latitude, longitude, hazard_types, stream_url, image_url,
+                thumbnail_url, source_url, attribution, enabled, stream_status,
+                image_status, last_checked_at, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                webcam.id,
+                webcam.name,
+                webcam.latitude,
+                webcam.longitude,
+                dumps([h.value for h in webcam.hazard_types]),
+                webcam.stream_url,
+                webcam.image_url,
+                webcam.thumbnail_url,
+                webcam.source_url,
+                webcam.attribution,
+                1 if webcam.enabled else 0,
+                "UNCHECKED",
+                "UNCHECKED",
+                None,
+                to_iso(utcnow()),
+            ),
+        )
+
+    def update(self, webcam: Webcam) -> None:
+        """Editing metadata must not clobber the background health check's status."""
+        self.db.execute(
+            """UPDATE webcam SET
+                 name=?, latitude=?, longitude=?, hazard_types=?, stream_url=?,
+                 image_url=?, thumbnail_url=?, source_url=?, attribution=?, enabled=?
+               WHERE id=?""",
+            (
+                webcam.name,
+                webcam.latitude,
+                webcam.longitude,
+                dumps([h.value for h in webcam.hazard_types]),
+                webcam.stream_url,
+                webcam.image_url,
+                webcam.thumbnail_url,
+                webcam.source_url,
+                webcam.attribution,
+                1 if webcam.enabled else 0,
+                webcam.id,
+            ),
+        )
+
+    def all(self, enabled_only: bool = False) -> list[Webcam]:
+        sql = "SELECT * FROM webcam"
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        return [_row_to_webcam(r) for r in self.db.query(sql + " ORDER BY name")]
+
+    def get(self, webcam_id: str) -> Webcam | None:
+        row = self.db.query_one("SELECT * FROM webcam WHERE id=?", (webcam_id,))
+        return _row_to_webcam(row) if row else None
+
+    def delete(self, webcam_id: str) -> None:
+        self.db.execute("DELETE FROM webcam WHERE id=?", (webcam_id,))
+
+    def record_check(
+        self, webcam_id: str, stream_status: str | None, image_status: str | None
+    ) -> None:
+        """Only tiers that are actually configured are updated by the checker."""
+        sets = ["last_checked_at=?"]
+        params: list[Any] = [to_iso(utcnow())]
+        if stream_status is not None:
+            sets.append("stream_status=?")
+            params.append(stream_status)
+        if image_status is not None:
+            sets.append("image_status=?")
+            params.append(image_status)
+        params.append(webcam_id)
+        self.db.execute(f"UPDATE webcam SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    def near(
+        self,
+        latitude: float,
+        longitude: float,
+        hazard_types: list[HazardType],
+        radius_km: float,
+        limit: int = 5,
+    ) -> list[Webcam]:
+        """Enabled webcams tagged for any of ``hazard_types``, closest first."""
+        wanted = set(hazard_types)
+        candidates = [w for w in self.all(enabled_only=True) if wanted & set(w.hazard_types)]
+        scored = [
+            (haversine_km(longitude, latitude, w.longitude, w.latitude), w) for w in candidates
+        ]
+        nearby = sorted((pair for pair in scored if pair[0] <= radius_km), key=lambda p: p[0])
+        return [w for _, w in nearby[:limit]]
+
+
 def _row_to_observation(row: Any) -> Observation:
     return Observation(
         message_id=row["id"],
@@ -583,6 +686,25 @@ def _row_to_watch_area(row: Any) -> WatchArea:
     )
 
 
+def _row_to_webcam(row: Any) -> Webcam:
+    return Webcam(
+        id=row["id"],
+        name=row["name"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        hazard_types=[HazardType(h) for h in loads(row["hazard_types"], [])],
+        stream_url=row["stream_url"],
+        image_url=row["image_url"],
+        thumbnail_url=row["thumbnail_url"],
+        source_url=row["source_url"],
+        attribution=row["attribution"],
+        enabled=bool(row["enabled"]),
+        stream_status=row["stream_status"],
+        image_status=row["image_status"],
+        last_checked_at=from_iso(row["last_checked_at"]) if row["last_checked_at"] else None,
+    )
+
+
 __all__ = [
     "AdvisoryRepo",
     "EventRepo",
@@ -597,5 +719,6 @@ __all__ = [
     "SourceRef",
     "VolcanoRepo",
     "WatchAreaRepo",
+    "WebcamRepo",
     "new_id",
 ]

@@ -13,6 +13,7 @@ import type {
   RefreshResult,
   SettingsResponse,
   WatchArea,
+  Webcam,
 } from "./types";
 
 class ApiError extends Error {
@@ -122,6 +123,41 @@ export const api = {
 
   deleteWatchArea: (id: string) =>
     request<void>(`/v1/watch-areas/${id}`, { method: "DELETE" }),
+
+  webcams: () => request<{ webcams: Webcam[] }>("/v1/webcams"),
+
+  createWebcam: (body: {
+    name: string;
+    latitude: number;
+    longitude: number;
+    hazardTypes: string[];
+    streamUrl?: string | null;
+    imageUrl?: string | null;
+    thumbnailUrl?: string | null;
+    sourceUrl?: string | null;
+    attribution?: string | null;
+    enabled?: boolean;
+  }) => request<Webcam>("/v1/webcams", { method: "POST", body: JSON.stringify(body) }),
+
+  updateWebcam: (
+    id: string,
+    body: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      hazardTypes: string[];
+      streamUrl?: string | null;
+      imageUrl?: string | null;
+      thumbnailUrl?: string | null;
+      sourceUrl?: string | null;
+      attribution?: string | null;
+      enabled?: boolean;
+    },
+  ) => request<Webcam>(`/v1/webcams/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+
+  deleteWebcam: (id: string) => request<void>(`/v1/webcams/${id}`, { method: "DELETE" }),
+
+  recheckWebcam: (id: string) => request<Webcam>(`/v1/webcams/${id}/recheck`, { method: "POST" }),
 
   notifications: (params: { archived?: boolean } = {}) =>
     request<{ notifications: NotificationRecord[] }>(

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import type {
   ArrivalEstimate,
@@ -9,6 +10,7 @@ import type {
 import type { MapClock } from "../map/useMapClock";
 import { useTimeZone } from "../state/timeZone";
 import { ProvenanceBadge } from "./ProvenanceBadge";
+import { WebcamPlayer } from "./WebcamPlayer";
 import { countdown, km, magnitudeText, stampIn, timeIn, utcStamp } from "./format";
 
 /** Fallback headings. A title must never assert a hazard the event is not. */
@@ -110,6 +112,57 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
   const { zone } = useTimeZone();
   const [detail, setDetail] = useState<EventDetailType | null>(null);
   const [impact, setImpact] = useState<{ result: ImpactResult; note: string } | null>(null);
+  const [hazardMapOpen, setHazardMapOpen] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const mapDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+
+  const clampZoom = (value: number): number => Math.min(4, Math.max(1, value));
+
+  const zoomTo = (value: number): void => {
+    const next = clampZoom(value);
+    setMapZoom(next);
+    if (next === 1) setMapPan({ x: 0, y: 0 });
+  };
+
+  const onMapWheel = (event: React.WheelEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    zoomTo(mapZoom - event.deltaY * 0.0015 * mapZoom);
+  };
+
+  const onMapPointerDown = (event: React.PointerEvent<HTMLImageElement>): void => {
+    if (mapZoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    mapDrag.current = { x: event.clientX, y: event.clientY, panX: mapPan.x, panY: mapPan.y };
+  };
+
+  const onMapPointerMove = (event: React.PointerEvent<HTMLImageElement>): void => {
+    if (!mapDrag.current) return;
+    setMapPan({
+      x: mapDrag.current.panX + (event.clientX - mapDrag.current.x),
+      y: mapDrag.current.panY + (event.clientY - mapDrag.current.y),
+    });
+  };
+
+  const onMapPointerUp = (): void => {
+    mapDrag.current = null;
+  };
+
+  useEffect(() => {
+    if (!hazardMapOpen) {
+      setMapZoom(1);
+      setMapPan({ x: 0, y: 0 });
+    }
+  }, [hazardMapOpen]);
+
+  useEffect(() => {
+    if (!hazardMapOpen) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setHazardMapOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hazardMapOpen]);
 
   useEffect(() => {
     if (!eventId) {
@@ -210,6 +263,128 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
             Set a location to see modelled arrival times.
           </p>
         )}
+
+        {detail.webcams.length > 0 ? (
+          <>
+            <div className="panel-title" style={{ margin: "0 0 6px" }}>
+              Nearby webcams
+            </div>
+            {detail.webcams.map((webcam) => (
+              <WebcamPlayer key={webcam.id} webcam={webcam} />
+            ))}
+          </>
+        ) : null}
+
+        {detail.hazardMap ? (
+          <>
+            <div className="panel-title" style={{ margin: "0 0 6px" }}>
+              Official hazard zone map
+            </div>
+            <button
+              className="hazard-map"
+              type="button"
+              onClick={() => setHazardMapOpen(true)}
+              aria-label={`View ${detail.hazardMap.volcanoName} hazard zone map`}
+            >
+              <img
+                src={detail.hazardMap.imageUrl}
+                alt={`${detail.hazardMap.volcanoName} hazard zone map (${detail.hazardMap.year})`}
+              />
+            </button>
+            <div className="webcam-caption" style={{ marginBottom: 10 }}>
+              <span>
+                {detail.hazardMap.volcanoName} KRB map, {detail.hazardMap.year}
+              </span>
+              <span>{detail.hazardMap.attribution}</span>
+              <a href={detail.hazardMap.sourceUrl} target="_blank" rel="noreferrer">
+                View original on MAGMA Indonesia
+              </a>
+            </div>
+          </>
+        ) : null}
+
+        {detail.hazardMap && hazardMapOpen
+          ? createPortal(
+              <div
+                className="modal-scrim"
+                onClick={() => setHazardMapOpen(false)}
+                role="presentation"
+              >
+                <div
+                  className="modal solid hazard-map-modal"
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={`${detail.hazardMap.volcanoName} hazard zone map`}
+                >
+                  <header className="panel-head">
+                    <span className="panel-title">
+                      {detail.hazardMap.volcanoName} KRB map, {detail.hazardMap.year}
+                    </span>
+                    <div className="hazard-map-zoom-controls">
+                      <button
+                        className="btn ghost"
+                        onClick={() => zoomTo(mapZoom - 0.5)}
+                        type="button"
+                        disabled={mapZoom <= 1}
+                        aria-label="Zoom out"
+                      >
+                        −
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => zoomTo(1)}
+                        type="button"
+                        disabled={mapZoom === 1}
+                        aria-label="Reset zoom"
+                      >
+                        {Math.round(mapZoom * 100)}%
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => zoomTo(mapZoom + 0.5)}
+                        type="button"
+                        disabled={mapZoom >= 4}
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => setHazardMapOpen(false)}
+                        type="button"
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </header>
+                  <div className="modal-body hazard-map-modal-body" onWheel={onMapWheel}>
+                    <img
+                      src={detail.hazardMap.imageUrl}
+                      alt={`${detail.hazardMap.volcanoName} hazard zone map (${detail.hazardMap.year})`}
+                      style={{
+                        transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
+                        cursor: mapZoom > 1 ? "grab" : "default",
+                      }}
+                      onPointerDown={onMapPointerDown}
+                      onPointerMove={onMapPointerMove}
+                      onPointerUp={onMapPointerUp}
+                      onPointerCancel={onMapPointerUp}
+                      draggable={false}
+                    />
+                    <div className="webcam-caption">
+                      <span>{detail.hazardMap.attribution}</span>
+                      <a href={detail.hazardMap.sourceUrl} target="_blank" rel="noreferrer">
+                        View on MAGMA Indonesia
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
 
         <dl className="kv">
           <dt>State</dt>

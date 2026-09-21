@@ -70,6 +70,10 @@ HAZARD_PROVENANCE_LABELS: dict[tuple[HazardType, ProvenanceClass], str] = {
         HazardType.VOLCANO,
         ProvenanceClass.SINGLE_SOURCE_RAPID,
     ): "Preliminary volcanic activity report",
+    (
+        HazardType.VOLCANO,
+        ProvenanceClass.AUTHORITATIVE_NOTICE,
+    ): "Official volcano observatory notice",
     (HazardType.ASH, ProvenanceClass.MULTISOURCE_RAPID): "Volcanic ash report",
     (HazardType.ASH, ProvenanceClass.SINGLE_SOURCE_RAPID): "Preliminary volcanic ash report",
     (HazardType.ASH, ProvenanceClass.AUTHORITATIVE_NOTICE): "Official volcanic ash advisory",

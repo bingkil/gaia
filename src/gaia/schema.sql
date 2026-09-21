@@ -216,3 +216,25 @@ CREATE TABLE IF NOT EXISTS poll_state (
     last_modified       TEXT,
     last_polled_at      TEXT
 );
+
+-- Public hazard-monitoring webcams. User-managed; reachability is refreshed
+-- by a background loop rather than trusted at entry time.
+CREATE TABLE IF NOT EXISTS webcam (
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    latitude            REAL NOT NULL,
+    longitude           REAL NOT NULL,
+    hazard_types        TEXT NOT NULL,
+    stream_url          TEXT,
+    image_url           TEXT,
+    thumbnail_url       TEXT,
+    source_url          TEXT,
+    attribution         TEXT,
+    enabled             INTEGER NOT NULL DEFAULT 1,
+    stream_status       TEXT NOT NULL DEFAULT 'UNCHECKED',
+    image_status        TEXT NOT NULL DEFAULT 'UNCHECKED',
+    last_checked_at     TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS webcam_pos_idx ON webcam (longitude, latitude);

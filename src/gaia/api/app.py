@@ -54,6 +54,9 @@ def create_app(settings: Settings | None = None, start_ingestion: bool = True) -
         seeded = runtime.seed()
         if seeded:
             log.info("seeded %d volcanoes", seeded)
+        seeded_webcams = runtime.seed_webcams()
+        if seeded_webcams:
+            log.info("seeded %d webcams", seeded_webcams)
 
         app.state.runtime = runtime
         if start_ingestion:

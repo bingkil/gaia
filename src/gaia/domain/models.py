@@ -178,6 +178,31 @@ class WatchArea(BaseModel):
     enabled: bool = True
 
 
+class Webcam(BaseModel):
+    """A public hazard-monitoring webcam, shown alongside matching events.
+
+    Three fallback tiers, tried in order by the client: live video
+    (``stream_url``), a periodically refreshed still (``image_url``), then a
+    static thumbnail / link-out (``thumbnail_url``). Reachability of the first
+    two tiers is checked in the background; ``*_status`` reflects the last check.
+    """
+
+    id: str
+    name: str
+    latitude: float
+    longitude: float
+    hazard_types: list[HazardType]
+    stream_url: str | None = None
+    image_url: str | None = None
+    thumbnail_url: str | None = None
+    source_url: str | None = None
+    attribution: str | None = None
+    enabled: bool = True
+    stream_status: str = "UNCHECKED"
+    image_status: str = "UNCHECKED"
+    last_checked_at: datetime | None = None
+
+
 class ArrivalEstimate(BaseModel):
     """Always an interval. Spec section 12.2 forbids false precision."""
 

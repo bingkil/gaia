@@ -24,11 +24,14 @@ from ..domain.enums import (
     label_for,
 )
 from ..domain.geo import circle_geojson, point_geojson
-from ..domain.models import HazardEvent, WatchArea
+from ..domain.models import HazardEvent, WatchArea, Webcam
 from ..engine.impact import ash_impact, earthquake_impact
 from ..logbuffer import BUFFER
 from ..providers import ADAPTERS, StreamingAdapter
 from ..providers.base import USER_AGENT
+from ..providers.krb_maps import ATTRIBUTION as KRB_ATTRIBUTION
+from ..providers.krb_maps import SOURCE_URL as KRB_SOURCE_URL
+from ..providers.krb_maps import find_krb_map
 from ..runtime import MANUAL_POLL_MIN_SECONDS, Runtime
 from ..store import (
     AdvisoryRepo,
@@ -36,6 +39,7 @@ from ..store import (
     FrameRepo,
     ObservationRepo,
     WatchAreaRepo,
+    WebcamRepo,
     new_id,
 )
 
@@ -85,6 +89,43 @@ def event_payload(event: HazardEvent) -> dict[str, Any]:
     data["dataAgeSeconds"] = _data_age(event)
     data["providers"] = event.providers
     return data
+
+
+def _nearby_webcams(runtime: Runtime, event: HazardEvent) -> list[Webcam]:
+    if event.longitude is None or event.latitude is None:
+        return []
+    return WebcamRepo(runtime.db).near(
+        latitude=event.latitude,
+        longitude=event.longitude,
+        hazard_types=[event.hazard_type],
+        radius_km=runtime.settings.webcams.match_radius_km,
+    )
+
+
+def _hazard_map_for_event(runtime: Runtime, event: HazardEvent) -> dict[str, Any] | None:
+    """Official PVMBG hazard-zone reference map for the event's volcano, if any."""
+    if event.hazard_type not in (HazardType.VOLCANO, HazardType.ASH):
+        return None
+
+    names = [event.summary.volcano_name]
+    if event.summary.volcano_id:
+        catalogue = runtime.pipeline.volcano_catalogue()
+        volcano = next((v for v in catalogue if v.id == event.summary.volcano_id), None)
+        if volcano is not None:
+            names.append(volcano.name)
+            names.extend(volcano.aliases)
+
+    entry = find_krb_map(*names)
+    if entry is None:
+        return None
+
+    return {
+        "volcanoName": entry.volcano_name,
+        "year": entry.year,
+        "imageUrl": entry.image_url,
+        "sourceUrl": KRB_SOURCE_URL,
+        "attribution": KRB_ATTRIBUTION,
+    }
 
 
 @router.get("/meta")
@@ -170,6 +211,10 @@ async def get_event(request: Request, event_id: str) -> dict[str, Any]:
         f.model_dump(mode="json") for f in FrameRepo(runtime.db).for_event(event_id)
     ]
     payload["advisories"] = AdvisoryRepo(runtime.db).for_event(event_id)
+    payload["webcams"] = [
+        w.model_dump(mode="json") for w in _nearby_webcams(runtime, event)
+    ]
+    payload["hazardMap"] = _hazard_map_for_event(runtime, event)
     return payload
 
 
@@ -438,6 +483,77 @@ async def update_watch_area(
 @router.delete("/watch-areas/{area_id}", status_code=204)
 async def delete_watch_area(request: Request, area_id: str) -> None:
     WatchAreaRepo(runtime_of(request).db).delete(area_id)
+
+
+class WebcamRequest(BaseModel):
+    name: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    hazardTypes: list[HazardType]
+    streamUrl: str | None = None
+    imageUrl: str | None = None
+    thumbnailUrl: str | None = None
+    sourceUrl: str | None = None
+    attribution: str | None = None
+    enabled: bool = True
+
+
+def _webcam_from_request(webcam_id: str, body: WebcamRequest) -> Webcam:
+    return Webcam(
+        id=webcam_id,
+        name=body.name,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        hazard_types=body.hazardTypes,
+        stream_url=body.streamUrl or None,
+        image_url=body.imageUrl or None,
+        thumbnail_url=body.thumbnailUrl or None,
+        source_url=body.sourceUrl or None,
+        attribution=body.attribution or None,
+        enabled=body.enabled,
+    )
+
+
+@router.get("/webcams")
+async def list_webcams(request: Request) -> dict[str, Any]:
+    webcams = WebcamRepo(runtime_of(request).db).all()
+    return {"webcams": [w.model_dump(mode="json") for w in webcams]}
+
+
+@router.post("/webcams", status_code=201)
+async def create_webcam(request: Request, body: WebcamRequest) -> dict[str, Any]:
+    runtime = runtime_of(request)
+    webcam = _webcam_from_request(new_id("webcam"), body)
+    WebcamRepo(runtime.db).create(webcam)
+    return webcam.model_dump(mode="json")
+
+
+@router.put("/webcams/{webcam_id}")
+async def update_webcam(request: Request, webcam_id: str, body: WebcamRequest) -> dict[str, Any]:
+    runtime = runtime_of(request)
+    repo = WebcamRepo(runtime.db)
+    if repo.get(webcam_id) is None:
+        raise HTTPException(404, "webcam not found")
+
+    webcam = _webcam_from_request(webcam_id, body)
+    repo.update(webcam)
+    updated = repo.get(webcam_id)
+    assert updated is not None
+    return updated.model_dump(mode="json")
+
+
+@router.delete("/webcams/{webcam_id}", status_code=204)
+async def delete_webcam(request: Request, webcam_id: str) -> None:
+    WebcamRepo(runtime_of(request).db).delete(webcam_id)
+
+
+@router.post("/webcams/{webcam_id}/recheck")
+async def recheck_webcam(request: Request, webcam_id: str) -> dict[str, Any]:
+    runtime = runtime_of(request)
+    webcam = await runtime.recheck_webcam(webcam_id)
+    if webcam is None:
+        raise HTTPException(404, "webcam not found")
+    return webcam.model_dump(mode="json")
 
 
 @router.get("/notifications")

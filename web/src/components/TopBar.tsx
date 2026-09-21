@@ -17,6 +17,8 @@ interface Props {
   onAlerts: () => void;
   watchAreaOpen: boolean;
   onWatchArea: () => void;
+  webcamAdminOpen: boolean;
+  onWebcamAdmin: () => void;
   pickMode: boolean;
   onPickMode: (on: boolean) => void;
   hasLocation: boolean;
@@ -31,6 +33,10 @@ interface Props {
   onFlights: (showFlights: boolean) => void;
   showFlightTrails: boolean;
   onFlightTrails: (showFlightTrails: boolean) => void;
+  showDayNight: boolean;
+  onDayNight: (showDayNight: boolean) => void;
+  showTimezones: boolean;
+  onTimezones: (showTimezones: boolean) => void;
   flightsLoading: boolean;
 }
 
@@ -62,6 +68,26 @@ function SatelliteIcon(): React.JSX.Element {
     <svg className="layer-icon" viewBox="0 0 12 12" aria-hidden="true">
       <circle cx="6" cy="6" r="2" fill="currentColor" />
       <ellipse cx="6" cy="6" rx="5.2" ry="2" fill="none" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
+
+/** Half-moon: the day/night terminator overlay. */
+function DayNightIcon(): React.JSX.Element {
+  return (
+    <svg className="layer-icon" viewBox="0 0 12 12" aria-hidden="true">
+      <circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" strokeWidth="1" />
+      <path d="M6 1a5 5 0 0 0 0 10Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** A clock face over a globe meridian: timezone boundaries. */
+function TimezonesIcon(): React.JSX.Element {
+  return (
+    <svg className="layer-icon" viewBox="0 0 12 12" aria-hidden="true">
+      <ellipse cx="6" cy="6" rx="5" ry="5" fill="none" stroke="currentColor" strokeWidth="1" />
+      <path d="M6 1v5l3 2" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
     </svg>
   );
 }
@@ -98,6 +124,17 @@ function WatchAreaIcon(): React.JSX.Element {
   );
 }
 
+/** A camera body with a lens: the webcam catalogue. */
+function WebcamIcon(): React.JSX.Element {
+  return (
+    <svg className="layer-icon" viewBox="0 0 12 12" aria-hidden="true">
+      <rect x="1" y="3.5" width="10" height="6.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle cx="6" cy="6.8" r="1.8" fill="none" stroke="currentColor" strokeWidth="1" />
+      <path d="M4 3.5 4.8 2h2.4l0.8 1.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function TopBar({
   filters,
   onFilters,
@@ -108,6 +145,8 @@ export function TopBar({
   onAlerts,
   watchAreaOpen,
   onWatchArea,
+  webcamAdminOpen,
+  onWebcamAdmin,
   pickMode,
   onPickMode,
   hasLocation,
@@ -122,6 +161,10 @@ export function TopBar({
   onFlights,
   showFlightTrails,
   onFlightTrails,
+  showDayNight,
+  onDayNight,
+  showTimezones,
+  onTimezones,
   flightsLoading,
 }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
@@ -275,6 +318,29 @@ export function TopBar({
               <SatelliteIcon />
               Satellite
             </button>
+            <div className="dropdown-sep" />
+            <button
+              className={`dropdown-item ${showDayNight ? "on" : ""}`}
+              onClick={() => onDayNight(!showDayNight)}
+              type="button"
+              role="checkbox"
+              aria-checked={showDayNight}
+              title="Shade the night side of the earth, following the sun in real time"
+            >
+              <DayNightIcon />
+              Day / night
+            </button>
+            <button
+              className={`dropdown-item ${showTimezones ? "on" : ""}`}
+              onClick={() => onTimezones(!showTimezones)}
+              type="button"
+              role="checkbox"
+              aria-checked={showTimezones}
+              title="Outline UTC-offset timezone boundaries"
+            >
+              <TimezonesIcon />
+              Timezones
+            </button>
           </div>
         ) : null}
       </div>
@@ -323,6 +389,15 @@ export function TopBar({
         title="Watch areas"
       >
         <WatchAreaIcon />
+      </button>
+      <button
+        className={`btn icon-only ${webcamAdminOpen ? "on" : ""}`}
+        onClick={onWebcamAdmin}
+        type="button"
+        aria-pressed={webcamAdminOpen}
+        title="Webcams"
+      >
+        <WebcamIcon />
       </button>
       <button className="btn" onClick={onLogs} type="button" title="Logs">
         ▤

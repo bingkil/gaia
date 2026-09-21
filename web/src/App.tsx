@@ -13,6 +13,7 @@ import { ProviderHealthPanel } from "./components/ProviderHealthPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { TopBar } from "./components/TopBar";
 import { WatchAreaPanel } from "./components/WatchAreaPanel";
+import { WebcamAdminPanel } from "./components/WebcamAdminPanel";
 import { type Basemap, type MapFocus, MapView } from "./map/MapView";
 import type { AerialCapture } from "./map/imagery";
 import { useMapClock } from "./map/useMapClock";
@@ -25,6 +26,8 @@ const BASEMAP_KEY = "gaia.basemap";
 const AERIAL_KEY = "gaia.aerial";
 const FLIGHTS_KEY = "gaia.flights";
 const FLIGHT_TRAILS_KEY = "gaia.flightTrails";
+const DAYNIGHT_KEY = "gaia.dayNight";
+const TIMEZONES_KEY = "gaia.timezones";
 
 function loadBasemap(): Basemap {
   const stored = window.localStorage.getItem(BASEMAP_KEY);
@@ -62,6 +65,7 @@ export function App(): React.JSX.Element {
   const [logsOpen, setLogsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [watchAreaOpen, setWatchAreaOpen] = useState(false);
+  const [webcamAdminOpen, setWebcamAdminOpen] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>(loadBasemap);
   const [aerialCapture, setAerialCapture] = useState<AerialCapture | null | undefined>(undefined);
@@ -71,6 +75,12 @@ export function App(): React.JSX.Element {
   );
   const [showFlightTrails, setShowFlightTrails] = useState(
     () => window.localStorage.getItem(FLIGHT_TRAILS_KEY) === "1",
+  );
+  const [showDayNight, setShowDayNight] = useState(
+    () => window.localStorage.getItem(DAYNIGHT_KEY) === "1",
+  );
+  const [showTimezones, setShowTimezones] = useState(
+    () => window.localStorage.getItem(TIMEZONES_KEY) === "1",
   );
   const [flights, setFlights] = useState<GeoJSON.FeatureCollection>({
     type: "FeatureCollection",
@@ -100,6 +110,14 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(FLIGHT_TRAILS_KEY, showFlightTrails ? "1" : "0");
   }, [showFlightTrails]);
+
+  useEffect(() => {
+    window.localStorage.setItem(DAYNIGHT_KEY, showDayNight ? "1" : "0");
+  }, [showDayNight]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TIMEZONES_KEY, showTimezones ? "1" : "0");
+  }, [showTimezones]);
 
   // A fresh object every time, so clicking the same row twice re-centres.
   const onSelectEvent = useCallback((event: HazardEvent) => {
@@ -183,10 +201,12 @@ export function App(): React.JSX.Element {
       ? null
       : `Filtered to ${rangeSummary(filters.range)}`;
 
-  const rightRailOpen = selectedId !== null || alertsOpen || watchAreaOpen;
+  const rightRailOpen = selectedId !== null || alertsOpen || watchAreaOpen || webcamAdminOpen;
 
   return (
-    <div className={`app${rightRailOpen ? "" : " no-right"}${leftCollapsed ? " no-left" : ""}`}>
+    <div
+      className={`app${rightRailOpen ? "" : " no-right"}${leftCollapsed ? " no-left" : ""}${webcamAdminOpen ? " right-wide" : ""}`}
+    >
       {model ? (
         <MapView
           events={data.eventFeatures}
@@ -207,6 +227,8 @@ export function App(): React.JSX.Element {
           showFlights={showFlights}
           showFlightTrails={showFlightTrails}
           showAsh={filters.hazardTypes.includes("ASH")}
+          showDayNight={showDayNight}
+          showTimezones={showTimezones}
           onFlightsData={setFlights}
           onFlightsStatus={setFlightsStatus}
         />
@@ -228,6 +250,8 @@ export function App(): React.JSX.Element {
         onAlerts={() => setAlertsOpen((open) => !open)}
         watchAreaOpen={watchAreaOpen}
         onWatchArea={() => setWatchAreaOpen((open) => !open)}
+        webcamAdminOpen={webcamAdminOpen}
+        onWebcamAdmin={() => setWebcamAdminOpen((open) => !open)}
         pickMode={pickMode}
         onPickMode={setPickMode}
         hasLocation={location !== null}
@@ -242,6 +266,10 @@ export function App(): React.JSX.Element {
         onFlights={setShowFlights}
         showFlightTrails={showFlightTrails}
         onFlightTrails={setShowFlightTrails}
+        showDayNight={showDayNight}
+        onDayNight={setShowDayNight}
+        showTimezones={showTimezones}
+        onTimezones={setShowTimezones}
         flightsLoading={flightsStatus.loading}
       />
 
@@ -337,6 +365,13 @@ export function App(): React.JSX.Element {
             location={location}
             onChanged={data.reloadWatchAreas}
             onClose={() => setWatchAreaOpen(false)}
+          />
+        ) : null}
+        {webcamAdminOpen ? (
+          <WebcamAdminPanel
+            location={location}
+            onFocus={(webcam) => setFocus({ longitude: webcam.longitude, latitude: webcam.latitude })}
+            onClose={() => setWebcamAdminOpen(false)}
           />
         ) : null}
       </div>

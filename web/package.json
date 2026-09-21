@@ -1,7 +1,7 @@
 {
   "name": "gaia-web",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,9 +10,11 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@types/tz-lookup": "^6.1.2",
     "maplibre-gl": "^6.9.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tz-lookup": "^6.1.25"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",
