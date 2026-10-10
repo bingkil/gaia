@@ -81,7 +81,7 @@ export function LogsPanel({ onClose }: { onClose: () => void }): React.JSX.Eleme
                 </option>
               ))}
             </select>
-            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
               <input
                 type="checkbox"
                 checked={autoScroll}

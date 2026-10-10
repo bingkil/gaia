@@ -1,6 +1,13 @@
 import { useState } from "react";
 import type { HazardEvent, HazardType } from "../api/types";
-import { FLAME_PATH, SHAPE_BY_HAZARD, VOLCANO_PATH, severityColour, severityOfEvent } from "../map/severity";
+import {
+  CYCLONE_PATH,
+  FLAME_PATH,
+  SHAPE_BY_HAZARD,
+  VOLCANO_PATH,
+  severityColour,
+  severityOfEvent,
+} from "../map/severity";
 import {
   ROLLING_PRESETS,
   type TimeRange,
@@ -9,7 +16,7 @@ import {
   todayIn,
 } from "../state/timeRange";
 import { useTimeZone } from "../state/timeZone";
-import { ago, coordText, eventTime, frpText, magnitudeText } from "./format";
+import { ago, coordText, cycloneText, eventTime, frpText, magnitudeText } from "./format";
 import { ProvenanceTag } from "./ProvenanceBadge";
 
 interface Props {
@@ -37,6 +44,8 @@ export function HazardIcon({ hazardType }: { hazardType: HazardType }): React.JS
         <circle cx="6" cy="6" r="4.8" fill="currentColor" />
       ) : shape === "flame" ? (
         <path d={FLAME_PATH} fill="currentColor" />
+      ) : shape === "cyclone" ? (
+        <path d={CYCLONE_PATH} fill="currentColor" />
       ) : shape === "volcano" ? (
         <path d={VOLCANO_PATH} fill="currentColor" />
       ) : (
@@ -48,6 +57,9 @@ export function HazardIcon({ hazardType }: { hazardType: HazardType }): React.JS
 
 function primaryText(event: HazardEvent): string {
   if (event.hazard_type === "EARTHQUAKE") return event.summary.place ?? "Unknown region";
+  if (event.hazard_type === "CYCLONE") {
+    return event.summary.storm_name ?? event.summary.place ?? "Unnamed cyclone";
+  }
   if (event.hazard_type === "WILDFIRE") {
     return event.summary.place ?? coordText(event.longitude, event.latitude) ?? "Unnamed fire";
   }
@@ -60,6 +72,10 @@ function secondaryText(event: HazardEvent): string {
   }
   if (event.hazard_type === "EARTHQUAKE" && event.summary.depth_km !== null) {
     return `${Math.round(event.summary.depth_km)} km deep`;
+  }
+  if (event.hazard_type === "CYCLONE") {
+    const text = cycloneText(event.summary.max_wind_kt);
+    if (text) return text;
   }
   if (event.hazard_type === "WILDFIRE") {
     const { detection_count, max_frp_mw, alert_level } = event.summary;

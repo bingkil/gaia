@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -25,13 +26,22 @@ log = logging.getLogger(__name__)
 
 _ALERT_LEVELS = {"green": "GREEN", "orange": "ORANGE", "red": "RED"}
 
-_HAZARD_BY_EVENT_TYPE = {"VO": HazardType.VOLCANO, "WF": HazardType.WILDFIRE}
+_HAZARD_BY_EVENT_TYPE = {
+    "VO": HazardType.VOLCANO,
+    "WF": HazardType.WILDFIRE,
+    "TC": HazardType.CYCLONE,
+}
+
+_KMH_PER_KNOT = 1.852
+
+# GDACS suffixes a storm's name with its year, e.g. "ISAIAS-26".
+_YEAR_SUFFIX = re.compile(r"-\d{2,4}$")
 
 
 class GdacsAdapter(PollingAdapter):
     name = "GDACS"
     hazard_type = HazardType.VOLCANO
-    parser_version = "gdacs/1.0.0"
+    parser_version = "gdacs/1.1.0"
     attribution = "Global Disaster Awareness and Coordination System, GDACS"
 
     async def poll_once(self, client: httpx.AsyncClient) -> int:
@@ -92,7 +102,15 @@ class GdacsAdapter(PollingAdapter):
         # volcano itself, which is what the catalogue is keyed on.
         name = props.get("eventname") or props.get("name") or "Unnamed volcano"
 
-        if hazard is HazardType.WILDFIRE:
+        if hazard is HazardType.CYCLONE:
+            # Each event type is numbered separately, so a cyclone id could
+            # otherwise collide with a volcano's.
+            source_id = f"TC_{event_id}"
+            volcano_name = None
+            place = country or props.get("name") or "Tropical cyclone"
+            # GDACS keeps finished storms on the list, as it does fires.
+            ended = not is_current and to_date is not None and to_date < utcnow()
+        elif hazard is HazardType.WILDFIRE:
             # GDACS numbers each event type in its own sequence, so a bare id
             # could fuse a fire into a volcano. Only the newer type is
             # namespaced, which leaves existing volcano keys untouched.
@@ -112,9 +130,17 @@ class GdacsAdapter(PollingAdapter):
             place = country or name
             ended = False
 
+        if hazard is HazardType.CYCLONE:
+            # The alert score barely moves while the storm does, so the episode
+            # (one per advisory) is what marks a new position. The ended flag is
+            # part of it so that a storm finishing is not dropped as a duplicate.
+            revision = f"{episode or 1}{':ended' if ended else ''}"
+        else:
+            revision = str(props.get("episodealertscore") or episode or "1")
+
         return {
             "source_id": source_id,
-            "source_revision": str(props.get("episodealertscore") or episode or "1"),
+            "source_revision": revision,
             "hazard_type": hazard,
             "action": Action.UPSERT,
             "source_issued_at": from_iso(_clean_time(props.get("datemodified"))),
@@ -136,12 +162,27 @@ class GdacsAdapter(PollingAdapter):
                 "is_current": is_current,
                 "ended": ended,
                 "place": place,
+                "storm_name": _storm_name(props) if hazard is HazardType.CYCLONE else None,
+                "max_wind_kt": _wind_kt(severity) if hazard is HazardType.CYCLONE else None,
                 "report_url": props.get("url", {}).get("report")
                 if isinstance(props.get("url"), dict)
                 else None,
                 "attribution": self.attribution,
             },
         }
+
+
+def _storm_name(props: dict[str, Any]) -> str | None:
+    name = _YEAR_SUFFIX.sub("", str(props.get("eventname") or "").strip())
+    return name.title() if name else None
+
+
+def _wind_kt(severity: dict[str, Any]) -> float | None:
+    """GDACS reports a cyclone's maximum sustained wind in km/h."""
+    if str(severity.get("severityunit") or "").lower() != "km/h":
+        return None
+    kmh = _as_float(severity.get("severity"))
+    return round(kmh / _KMH_PER_KNOT, 1) if kmh is not None else None
 
 
 def _clean_time(value: Any) -> str | None:

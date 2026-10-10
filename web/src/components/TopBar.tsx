@@ -45,6 +45,7 @@ const HAZARDS: { value: HazardType; label: string }[] = [
   { value: "VOLCANO", label: "Volcano" },
   { value: "ASH", label: "Ash" },
   { value: "WILDFIRE", label: "Fire" },
+  { value: "CYCLONE", label: "Cyclone" },
 ];
 
 const STATUS_TEXT: Record<RealtimeStatus, string> = {
@@ -262,7 +263,7 @@ export function TopBar({
         })}
       </div>
 
-      <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13 }}>
         <span className="clock-label">Min M</span>
         <input
           type="range"
@@ -472,7 +473,7 @@ export function TopBar({
       >
         ⟳
       </button>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
         <i className={`dot ${status} ${status === "live" ? "pulse" : ""}`} />
         {STATUS_TEXT[status]}
       </span>

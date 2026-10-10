@@ -327,7 +327,7 @@ export function WebcamAdminPanel({ location, onFocus, onClose }: Props): React.J
                 {HAZARDS.map((hazard) => (
                   <label
                     key={hazard.value}
-                    style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}
+                    style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
                   >
                     <input
                       type="checkbox"
@@ -381,7 +381,7 @@ export function WebcamAdminPanel({ location, onFocus, onClose }: Props): React.J
                 onChange={(event) => setForm({ ...form, attribution: event.target.value })}
               />
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginBottom: 9 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 9 }}>
               <input
                 type="checkbox"
                 checked={form.enabled}

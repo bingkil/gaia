@@ -24,13 +24,15 @@ DECISION_VERSION = "fusion/1.0.0"
 # Per-field source authority. Higher wins. Spec section 11.3 ranks by authority
 # first, then quality, then freshness.
 FIELD_AUTHORITY: dict[str, dict[str, int]] = {
-    "location": {"USGS": 3, "EMSC": 3, "GEOFON": 2, "GDACS": 1, "FIRMS": 0},
+    "location": {"USGS": 3, "EMSC": 3, "GEOFON": 2, "NHC": 3, "GDACS": 1, "FIRMS": 0},
     "magnitude": {"USGS": 3, "GEOFON": 3, "EMSC": 2, "GDACS": 0, "FIRMS": 0},
     "depth": {"USGS": 3, "GEOFON": 3, "EMSC": 2, "GDACS": 0, "FIRMS": 0},
-    "place": {"EMSC": 3, "USGS": 3, "GEOFON": 1, "GDACS": 2, "FIRMS": 0},
+    "place": {"EMSC": 3, "USGS": 3, "NHC": 3, "GEOFON": 1, "GDACS": 2, "FIRMS": 0},
     # VONA is the observatory's own notice, so it outranks GDACS's
     # VAA/Smithsonian-derived reporting for the volcano's name/alert level.
     "volcano": {"VONA": 4, "GDACS": 3, "FIRMS": 1},
+    # NHC is the issuing agency; GDACS re-publishes a converted copy of it.
+    "cyclone": {"NHC": 4, "GDACS": 2},
 }
 
 _EARTHQUAKE_PROVIDERS = {"EMSC", "USGS", "GEOFON"}
@@ -79,6 +81,11 @@ def classify_provenance(
     # A VONA is an observatory's own official notice, the same standing as a VAA.
     if "VONA" in providers:
         reasons.append("OFFICIAL_OBSERVATORY_NOTICE")
+        return ProvenanceClass.AUTHORITATIVE_NOTICE, reasons
+
+    # An NHC advisory is the forecast agency's own statement about its storm.
+    if "NHC" in providers:
+        reasons.append("OFFICIAL_CYCLONE_ADVISORY")
         return ProvenanceClass.AUTHORITATIVE_NOTICE, reasons
 
     # Volcanic or fire: a satellite heat signal alone is only an automated signal.
@@ -182,6 +189,8 @@ def build_event(
     volcano_name, volcano_src = _select(ordered, "volcano", "volcano_name")
     alert_level, _ = _select(ordered, "volcano", "alert_level")
     tsunami, _ = _select(ordered, "magnitude", "tsunami")
+    storm_name, _ = _select(ordered, "cyclone", "storm_name")
+    max_wind_kt, _ = _select(ordered, "cyclone", "max_wind_kt")
 
     provenance, provenance_reasons = classify_provenance(hazard_type, ordered)
     confidence, confidence_reasons = compute_confidence(hazard_type, ordered)
@@ -224,6 +233,8 @@ def build_event(
             volcano_name=volcano_name,
             alert_level=alert_level,
             tsunami=bool(tsunami) if tsunami is not None else None,
+            storm_name=storm_name,
+            max_wind_kt=max_wind_kt,
         ),
         confidence=confidence,
         confidence_reasons=sorted(set(provenance_reasons + confidence_reasons)),
@@ -262,6 +273,7 @@ def diff_events(previous: HazardEvent | None, current: HazardEvent) -> dict[str,
     compare("place", previous.summary.place, current.summary.place)
     compare("alertLevel", previous.summary.alert_level, current.summary.alert_level)
     compare("tsunami", previous.summary.tsunami, current.summary.tsunami)
+    compare("maxWindKt", previous.summary.max_wind_kt, current.summary.max_wind_kt)
     compare("confidence", previous.confidence, current.confidence)
 
     before_providers = set(previous.providers)

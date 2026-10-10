@@ -5,6 +5,7 @@ from .firms import FirmsAdapter
 from .gdacs import GdacsAdapter
 from .geofon import GeofonAdapter
 from .isigmet import IsigmetAdapter
+from .nhc import NhcAdapter
 from .usgs import UsgsAdapter
 from .vona import VonaAdapter
 
@@ -16,6 +17,7 @@ ADAPTERS = {
     "firms": FirmsAdapter,
     "isigmet": IsigmetAdapter,
     "vona": VonaAdapter,
+    "nhc": NhcAdapter,
 }
 
 __all__ = [
@@ -27,6 +29,7 @@ __all__ = [
     "GeofonAdapter",
     "HazardAdapter",
     "IsigmetAdapter",
+    "NhcAdapter",
     "PollingAdapter",
     "StreamingAdapter",
     "UsgsAdapter",

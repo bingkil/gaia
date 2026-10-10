@@ -15,7 +15,7 @@ body {
   background: var(--bg-void);
   color: var(--fg);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 15px;
   overflow: hidden;
 }
 
@@ -172,7 +172,7 @@ textarea {
 }
 
 .panel-title {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-dim);
@@ -188,7 +188,7 @@ textarea {
   background: none;
   border: none;
   padding: 0;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-dim);
@@ -223,12 +223,12 @@ textarea {
   align-self: center;
 }
 .brand b {
-  font-size: 17px;
+  font-size: 19px;
   letter-spacing: 0.28em;
   font-weight: 700;
 }
 .brand span {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--fg-dim);
 }
@@ -290,7 +290,7 @@ textarea {
   border-bottom-left-radius: 0;
   border-left: none;
   padding: 5px 7px;
-  font-size: 9px;
+  font-size: 11px;
 }
 .dropdown {
   position: absolute;
@@ -307,7 +307,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
   background: none;
@@ -333,7 +333,7 @@ textarea {
   margin-bottom: 9px;
 }
 .field label {
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--fg-faint);
@@ -368,7 +368,7 @@ input[type="range"] {
 
 .event-row {
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 52px 1fr auto;
   gap: 9px;
   align-items: center;
   padding: 8px 12px;
@@ -392,7 +392,7 @@ input[type="range"] {
 
 .event-mag {
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1;
   display: flex;
@@ -406,13 +406,13 @@ input[type="range"] {
   flex: none;
 }
 .event-place {
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .event-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
   display: flex;
   gap: 6px;
@@ -420,7 +420,7 @@ input[type="range"] {
 }
 .event-time {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
   white-space: nowrap;
 }
@@ -435,7 +435,7 @@ input[type="range"] {
 }
 .flight-callsign {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 .flight-id {
   display: flex;
@@ -443,11 +443,11 @@ input[type="range"] {
   gap: 1px;
 }
 .flight-airline {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
 }
 .flight-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
   white-space: nowrap;
 }
@@ -461,7 +461,7 @@ input[type="range"] {
 }
 .date-input {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg);
   background: var(--solid-bg-raised);
   border: 1px solid var(--solid-border);
@@ -479,7 +479,7 @@ input[type="range"] {
   padding: 3px 7px;
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   background: var(--solid-bg-raised);
@@ -488,7 +488,7 @@ input[type="range"] {
   white-space: nowrap;
 }
 .provenance-glyph {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
 }
 .provenance.compact {
@@ -580,14 +580,14 @@ input[type="range"] {
   aspect-ratio: 16 / 9;
   background: rgba(0, 0, 0, 0.4);
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: 13px;
 }
 .webcam-caption {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 5px 8px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
 }
 .webcam-caption a {
@@ -675,7 +675,7 @@ input[type="range"] {
   min-width: 100px;
 }
 .webcam-row-name {
-  font-size: 11px;
+  font-size: 13px;
 }
 .webcam-row-tags {
   display: flex;
@@ -685,7 +685,7 @@ input[type="range"] {
 .webcam-row-status {
   display: flex;
   gap: 8px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
   align-items: center;
 }
@@ -766,7 +766,7 @@ input[type="range"] {
   border-radius: 7px;
   background: var(--danger);
   color: var(--fg);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 14px;
   text-align: center;
@@ -790,10 +790,10 @@ input[type="range"] {
 }
 .alert-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 15px;
 }
 .alert-body {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-dim);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -815,7 +815,7 @@ input[type="range"] {
 }
 .arrival-row {
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: 46px 1fr auto;
   gap: 9px;
   align-items: baseline;
 }
@@ -831,7 +831,7 @@ input[type="range"] {
   font-variant-numeric: tabular-nums;
 }
 .arrival-note {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-faint);
   line-height: 1.5;
 }
@@ -845,13 +845,13 @@ input[type="range"] {
   display: grid;
   grid-template-columns: 88px 1fr;
   gap: 4px 10px;
-  font-size: 11px;
+  font-size: 13px;
   align-items: baseline;
 }
 .kv dt {
   color: var(--fg-faint);
   text-transform: uppercase;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
 }
 .kv dd {
@@ -865,7 +865,7 @@ input[type="range"] {
   padding: 1px 6px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.07);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-dim);
@@ -879,7 +879,7 @@ input[type="range"] {
   padding: 22px 14px;
   text-align: center;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -889,12 +889,12 @@ input[type="range"] {
   border-radius: 4px;
   background: rgba(240, 180, 41, 0.12);
   color: var(--warn);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
 .disclaimer {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
   line-height: 1.5;
   padding: 9px 12px;
@@ -906,7 +906,7 @@ input[type="range"] {
   justify-self: start;
   margin: 0 0 34px 10px;
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: 12px;
   background: var(--solid-bg);
   border: 1px solid var(--solid-border);
   border-radius: var(--radius);
@@ -921,12 +921,12 @@ input[type="range"] {
 }
 .clock-time {
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 17px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .clock-label {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--fg-faint);
@@ -937,19 +937,19 @@ input[type="range"] {
   align-items: center;
   gap: 8px;
   padding: 3px 0;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
 }
 .legend-scale {
   display: grid;
-  grid-template-columns: 13px repeat(4, 1fr);
+  grid-template-columns: 13px repeat(5, 1fr);
   gap: 4px 8px;
   align-items: center;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
 }
 .legend-scale-head {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--fg-faint);
@@ -962,7 +962,7 @@ input[type="range"] {
 }
 .legend-note {
   margin: 8px 0 10px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--fg-faint);
 }
@@ -1004,26 +1004,26 @@ input[type="range"] {
   margin-bottom: 10px;
 }
 .modal .panel-title {
-  font-size: 12px;
+  font-size: 14px;
 }
 .modal .legend-note {
-  font-size: 12px;
+  font-size: 14px;
 }
 .modal .settings-table {
-  font-size: 12px;
+  font-size: 14px;
 }
 .modal .settings-table th {
-  font-size: 10px;
+  font-size: 12px;
 }
 .settings-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 13px;
   font-family: var(--mono);
 }
 .settings-table th {
   text-align: left;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--fg-faint);
@@ -1040,7 +1040,7 @@ input[type="range"] {
 }
 .modal code {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--fg-dim);
 }
 
@@ -1050,7 +1050,7 @@ input[type="range"] {
 }
 .logs-body {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13px;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1119,23 +1119,23 @@ input[type="range"] {
 }
 .map-tip-mark {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   flex: none;
 }
 .map-tip-title {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.3;
 }
 .map-tip-meta {
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 12px;
   font-family: var(--mono);
   color: var(--fg-dim);
 }
 .map-tip-retracted {
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--danger);
@@ -1148,14 +1148,14 @@ input[type="range"] {
   box-shadow: var(--glass-shadow);
   padding: 9px 11px;
   color: var(--fg);
-  font-size: 12px;
+  font-size: 14px;
 }
 .map-tip-tz b {
   display: block;
   margin-bottom: 3px;
 }
 .map-tip-tz div {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-dim);
 }
 
@@ -1175,7 +1175,7 @@ input[type="range"] {
 
 .maplibregl-ctrl-attrib {
   background: rgba(4, 7, 12, 0.8) !important;
-  font-size: 9px !important;
+  font-size: 11px !important;
 }
 .maplibregl-ctrl-attrib a {
   color: var(--fg-faint) !important;

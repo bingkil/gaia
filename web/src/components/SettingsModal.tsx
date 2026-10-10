@@ -391,7 +391,7 @@ export function SettingsModal({
                 rows={7}
                 value={bulletin}
                 spellCheck={false}
-                style={{ fontFamily: "var(--mono)", fontSize: 10, resize: "vertical" }}
+                style={{ fontFamily: "var(--mono)", fontSize: 12, resize: "vertical" }}
                 onChange={(event) => setBulletin(event.target.value)}
                 placeholder={"VA ADVISORY\nDTG: …\nVAAC: …\nVOLCANO: …\nOBS VA CLD: …"}
               />
@@ -420,7 +420,7 @@ export function SettingsModal({
                     <div className="panel-title" style={{ margin: "10px 0 4px" }}>
                       Parser warnings
                     </div>
-                    <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: "var(--warn)" }}>
+                    <ul style={{ margin: 0, paddingLeft: 16, fontSize: 13, color: "var(--warn)" }}>
                       {vaaResult.warnings.map((warning) => (
                         <li key={warning}>{warning}</li>
                       ))}

@@ -90,7 +90,7 @@ export function NotificationFeed({
                 <span className="alert-title">{notification.title}</span>
                 <span className="alert-body">{notification.body}</span>
                 <div className="alert-foot">
-                  <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>
+                  <span style={{ fontSize: 12, color: "var(--fg-faint)" }}>
                     {timeIn(zone, notification.createdAt)} · {notification.alertType}
                     {notification.readAt ? <span className="tag read-tag">Read</span> : null}
                   </span>

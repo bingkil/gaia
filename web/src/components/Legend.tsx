@@ -1,15 +1,15 @@
 import { Fragment, useState } from "react";
 import type { Meta } from "../api/types";
-import { FLAME_PATH, SEVERITY_COLOURS, VOLCANO_PATH } from "../map/severity";
+import { CYCLONE_PATH, FLAME_PATH, SEVERITY_COLOURS, VOLCANO_PATH } from "../map/severity";
 import { PROVENANCE_MARKS, PROVENANCE_ORDER, ProvenanceTag } from "./ProvenanceBadge";
 
 /** One row per ramp step, read against whichever hazard's column applies. */
 const SEVERITY_SCALE = [
-  { quake: "M <3", volcano: "—", ash: "—", fire: "—" },
-  { quake: "M 3–4.5", volcano: "GREEN or none", ash: "—", fire: "satellite only" },
-  { quake: "M 4.5–6", volcano: "YELLOW", ash: "—", fire: "YELLOW" },
-  { quake: "M 6–7", volcano: "ORANGE", ash: "always", fire: "ORANGE" },
-  { quake: "M 7+", volcano: "RED", ash: "—", fire: "RED" },
+  { quake: "M <3", volcano: "—", ash: "—", fire: "—", cyclone: "<34 kt" },
+  { quake: "M 3–4.5", volcano: "GREEN or none", ash: "—", fire: "satellite only", cyclone: "34–63 kt" },
+  { quake: "M 4.5–6", volcano: "YELLOW", ash: "—", fire: "YELLOW", cyclone: "Cat 1–2" },
+  { quake: "M 6–7", volcano: "ORANGE", ash: "always", fire: "ORANGE", cyclone: "Cat 3" },
+  { quake: "M 7+", volcano: "RED", ash: "—", fire: "RED", cyclone: "Cat 4–5" },
 ];
 
 export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
@@ -42,6 +42,12 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
               </svg>
               fire
             </span>
+            <span className="legend-scale-head">
+              <svg className="legend-glyph" viewBox="0 0 12 12" aria-hidden="true">
+                <path d={CYCLONE_PATH} fill="currentColor" />
+              </svg>
+              cyclone
+            </span>
             {SEVERITY_COLOURS.map((colour, index) => (
               <Fragment key={colour}>
                 <i className="legend-swatch" style={{ background: colour, borderRadius: "50%" }} />
@@ -49,6 +55,7 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
                 <span>{SEVERITY_SCALE[index]?.volcano}</span>
                 <span>{SEVERITY_SCALE[index]?.ash}</span>
                 <span>{SEVERITY_SCALE[index]?.fire}</span>
+                <span>{SEVERITY_SCALE[index]?.cyclone}</span>
               </Fragment>
             ))}
           </div>
@@ -57,7 +64,9 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
             shapes is not the same danger. A volcano&rsquo;s swatch is this ranking, not the
             agency&rsquo;s own colour code — an agency RED is drawn magenta here. Ash is always
             drawn at step 4; that is a placeholder, not a measurement. A fire at step 2 carries no
-            agency grading at all: it is a cluster of satellite heat, not a declared emergency.
+            agency grading at all: it is a cluster of satellite heat, not a declared emergency. A
+            cyclone is ranked by its maximum sustained wind alone, on the Saffir–Simpson steps;
+            surge, rain and flooding can be deadly in a storm that ranks low.
           </p>
 
           <div className="legend-row">
@@ -70,6 +79,21 @@ export function Legend({ meta }: { meta: Meta | null }): React.JSX.Element {
               style={{ border: "1px dashed #6c5ce7", background: "rgba(108,92,231,.15)" }}
             />
             Ash forecast
+          </div>
+          <div className="legend-row">
+            <i
+              className="legend-swatch"
+              style={{ border: "1px dashed #ffffff", background: "rgba(255,255,255,.1)" }}
+            />
+            Cyclone track uncertainty (not the damage area)
+          </div>
+          <div className="legend-row">
+            <i className="legend-swatch" style={{ border: "2px dashed #ffffff" }} />
+            Cyclone forecast track
+          </div>
+          <div className="legend-row">
+            <i className="legend-swatch" style={{ background: "#f78c3a", opacity: 0.6 }} />
+            Cyclone wind now: 34, 50, 64 kt (agency estimate)
           </div>
           <div className="legend-row">
             <i className="legend-swatch" style={{ border: "1px solid #00a5d4" }} />

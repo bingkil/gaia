@@ -10,7 +10,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from gaia.config import AlertSettings, CorrelationSettings, FirmsSettings, ModelSettings
+import nhc_samples
+from gaia.config import (
+    AlertSettings,
+    CorrelationSettings,
+    FirmsSettings,
+    ModelSettings,
+    NhcSettings,
+)
 from gaia.domain.enums import (
     PROVENANCE_LABELS,
     Action,
@@ -30,6 +37,7 @@ from gaia.engine.volcano import ThermalCluster, classify_thermal
 from gaia.engine.wildfire import FireCluster, classify_fire
 from gaia.providers.firms import FirmsAdapter
 from gaia.providers.gdacs import GdacsAdapter
+from gaia.providers.nhc import NhcAdapter
 
 ORIGIN = datetime(2026, 9, 13, 19, 41, 17, tzinfo=UTC)
 CORRELATION = CorrelationSettings()
@@ -493,6 +501,184 @@ class TestFireClassification:
         )
         assert reportable is True
         assert "OFFICIAL_EVENT_FEED_AGREES" in reasons
+
+
+class TestGdacsCyclone:
+    def _feature(self, **overrides) -> dict:
+        """Shaped from a live GDACS TC response."""
+        props = {
+            "eventtype": "TC",
+            "eventid": 1001334,
+            "episodeid": 12,
+            "eventname": "ISAIAS-26",
+            "name": "Tropical Cyclone ISAIAS-26",
+            "country": "United States",
+            "alertlevel": "Orange",
+            "episodealertscore": 2.0,
+            "iscurrent": "true",
+            "fromdate": "2026-10-06T21:00:00",
+            "todate": "2099-01-01T00:00:00",
+            "datemodified": "2026-10-09T15:16:07",
+            "severitydata": {"severity": 194.4432, "severityunit": "km/h", "severitytext": ""},
+        }
+        props.update(overrides)
+        return {"geometry": {"type": "Point", "coordinates": [-87.3, 27.7]}, "properties": props}
+
+    def test_storm_is_a_cyclone_with_its_own_id_space(self):
+        record = _parse_one(self._feature())
+        assert record["hazard_type"] is HazardType.CYCLONE
+        # GDACS numbers each type separately, so a bare id could collide.
+        assert record["source_id"] == "TC_1001334"
+        assert record["normalized"]["volcano_name"] is None
+
+    def test_name_loses_gdacs_year_suffix_so_it_can_match_nhc(self):
+        assert _parse_one(self._feature())["normalized"]["storm_name"] == "Isaias"
+
+    def test_wind_is_converted_from_kmh_to_knots(self):
+        assert _parse_one(self._feature())["normalized"]["max_wind_kt"] == pytest.approx(105.0, abs=0.1)
+
+    def test_wind_in_an_unknown_unit_is_not_guessed(self):
+        severity = {"severity": 194.4, "severityunit": "mph", "severitytext": ""}
+        assert _parse_one(self._feature(severitydata=severity))["normalized"]["max_wind_kt"] is None
+
+    def test_each_advisory_is_a_new_revision(self):
+        """The alert score barely moves while a storm does, so it cannot be the key."""
+        first = _parse_one(self._feature(episodeid=12))["source_revision"]
+        second = _parse_one(self._feature(episodeid=13))["source_revision"]
+        assert first != second
+
+    def test_finished_storm_is_ended_and_not_dropped_as_a_duplicate(self):
+        live = _parse_one(self._feature())
+        done = _parse_one(self._feature(iscurrent="false", todate="2026-10-09T15:00:00"))
+        assert live["normalized"]["ended"] is False
+        assert done["normalized"]["ended"] is True
+        assert done["source_revision"] != live["source_revision"]
+
+
+class TestNhcParsing:
+    def _parse(self, payload: bytes) -> list[dict]:
+        return NhcAdapter(None, NhcSettings()).parse(payload)
+
+    def _frames(self, record: dict, geometry_type: str) -> list[dict]:
+        return [f for f in record["normalized"]["frames"] if f["geometry_type"] == geometry_type]
+
+    def test_storm_becomes_an_official_cyclone_record(self):
+        (record,) = self._parse(nhc_samples.bundle())
+        normalized = record["normalized"]
+
+        assert record["hazard_type"] is HazardType.CYCLONE
+        assert record["source_id"] == "AL092026"
+        assert normalized["storm_name"] == "Isaias"
+        assert normalized["max_wind_kt"] == 105.0
+        assert normalized["place"] == "Atlantic"
+        assert normalized["longitude"] == -87.2
+
+    def test_geometry_comes_from_all_three_products(self):
+        (record,) = self._parse(nhc_samples.bundle())
+
+        assert len(self._frames(record, "CYCLONE_CONE")) == 1
+        assert len(self._frames(record, "CYCLONE_POSITION")) == 2
+        assert sorted(f["properties"]["windKt"] for f in self._frames(record, "CYCLONE_WIND_RADII")) == [
+            34,
+            64,
+        ]
+
+    def test_the_longer_forecast_line_is_the_track(self):
+        (record,) = self._parse(nhc_samples.bundle())
+        (track,) = self._frames(record, "CYCLONE_TRACK")
+        assert len(track["geometry"]["coordinates"]) == 4
+
+    def test_forecast_points_carry_lead_time_and_wind(self):
+        (record,) = self._parse(nhc_samples.bundle())
+        points = {f["properties"]["leadHours"]: f for f in self._frames(record, "CYCLONE_POSITION")}
+
+        assert points[12]["properties"]["maxWindKt"] == 100
+        assert points[24]["properties"]["maxWindKt"] == 55
+
+    def test_the_current_position_is_not_a_forecast_point(self):
+        """The event marker already is the current position."""
+        (record,) = self._parse(nhc_samples.bundle())
+        assert all(f["lead_hours"] is not None for f in self._frames(record, "CYCLONE_POSITION"))
+
+    def test_local_valid_time_is_converted_to_utc(self):
+        (record,) = self._parse(nhc_samples.bundle())
+        point = next(
+            f for f in self._frames(record, "CYCLONE_POSITION") if f["lead_hours"] == 12
+        )
+        # 7:00 PM CDT (UTC-5) on 9 October is midnight UTC on the 10th.
+        assert point["valid_time"] == "2026-10-10T00:00:00Z"
+
+    def test_unrecognised_zone_keeps_the_point_without_inventing_a_time(self):
+        files = {"track": nhc_samples.kmz(nhc_samples.track_kml(zone="XYZ"))}
+        (record,) = self._parse(nhc_samples.bundle(files))
+
+        points = self._frames(record, "CYCLONE_POSITION")
+        assert len(points) == 2
+        assert all("validTimeMs" not in p["properties"] for p in points)
+
+    def test_every_frame_records_which_advisory_it_came_from(self):
+        (record,) = self._parse(nhc_samples.bundle())
+        issued_ms = datetime(2026, 10, 9, 18, tzinfo=UTC).timestamp() * 1000
+        assert {f["properties"]["issuedAtMs"] for f in record["normalized"]["frames"]} == {issued_ms}
+
+    def test_a_kml_declaring_a_dtd_is_refused_without_losing_the_storm(self):
+        files = {"cone": nhc_samples.kmz(nhc_samples.DTD_KML), "radii": nhc_samples.kmz(nhc_samples.RADII_KML)}
+        (record,) = self._parse(nhc_samples.bundle(files))
+
+        assert any(w.startswith("CONE_UNREADABLE") for w in record["warnings"])
+        assert self._frames(record, "CYCLONE_CONE") == []
+        assert len(self._frames(record, "CYCLONE_WIND_RADII")) == 2
+
+    def test_storm_with_no_products_still_has_a_position(self):
+        (record,) = self._parse(nhc_samples.bundle({}))
+        assert record["normalized"]["frames"] == []
+        assert record["normalized"]["latitude"] == 28.4
+
+    def test_storm_without_a_position_is_skipped(self):
+        assert self._parse(nhc_samples.bundle(lon=None, lat=None)) == []
+
+    def test_each_advisory_is_a_new_revision(self):
+        first = self._parse(nhc_samples.bundle(updated="2026-10-09T18:00:00.000Z"))[0]
+        second = self._parse(nhc_samples.bundle(updated="2026-10-09T21:00:00.000Z"))[0]
+        assert first["source_revision"] != second["source_revision"]
+
+
+class TestCycloneLanguage:
+    def _obs(self, provider: str, source_id: str = "x") -> Observation:
+        obs = make_obs(provider, source_id)
+        obs.hazard_type = HazardType.CYCLONE
+        return obs
+
+    def test_nhc_advisory_is_an_official_notice(self):
+        provenance, reasons = classify_provenance(HazardType.CYCLONE, [self._obs("NHC")])
+        assert provenance is ProvenanceClass.AUTHORITATIVE_NOTICE
+        assert "OFFICIAL_CYCLONE_ADVISORY" in reasons
+        assert label_for(provenance, HazardType.CYCLONE) == "Official tropical cyclone advisory"
+
+    def test_gdacs_alone_stays_preliminary(self):
+        provenance, _ = classify_provenance(HazardType.CYCLONE, [self._obs("GDACS")])
+        assert provenance is ProvenanceClass.SINGLE_SOURCE_RAPID
+        assert label_for(provenance, HazardType.CYCLONE) == "Preliminary tropical cyclone report"
+
+    def test_cyclone_labels_never_use_earthquake_wording(self):
+        for provenance in (
+            ProvenanceClass.SINGLE_SOURCE_RAPID,
+            ProvenanceClass.MULTISOURCE_RAPID,
+            ProvenanceClass.AUTHORITATIVE_NOTICE,
+        ):
+            assert "earthquake" not in label_for(provenance, HazardType.CYCLONE).lower()
+
+    def test_nhc_outranks_gdacs_for_the_storm_name_and_wind(self):
+        nhc = self._obs("NHC", "AL092026")
+        nhc.normalized.update(storm_name="Isaias", max_wind_kt=105.0)
+        gdacs = self._obs("GDACS", "TC_1")
+        gdacs.normalized.update(storm_name="Isaias-26", max_wind_kt=99.0)
+        # GDACS is the newer report, so recency alone would pick it.
+        gdacs.ingested_at = nhc.ingested_at + timedelta(minutes=30)
+
+        event, _ = build_event("evt_1", HazardType.CYCLONE, [nhc, gdacs], None)
+        assert event.summary.storm_name == "Isaias"
+        assert event.summary.max_wind_kt == 105.0
 
 
 class TestFirmsKeyRedaction:

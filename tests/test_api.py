@@ -8,11 +8,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+import nhc_samples
 from gaia.api.app import create_app
-from gaia.config import IsigmetSettings, Settings, VonaSettings
-from gaia.domain.enums import Action, HazardType
-from gaia.domain.models import Observation
+from gaia.config import AlertSettings, GdacsSettings, IsigmetSettings, NhcSettings, Settings, VonaSettings
+from gaia.domain.enums import Action, AlertType, HazardType
+from gaia.domain.geo import circle_geojson
+from gaia.domain.models import Observation, WatchArea
+from gaia.engine.policy import should_alert
+from gaia.providers.gdacs import GdacsAdapter
 from gaia.providers.isigmet import IsigmetAdapter
+from gaia.providers.nhc import NhcAdapter
 from gaia.providers.vona import VonaAdapter
 
 VAA_BULLETIN = """FVAU01 ADRM 131800
@@ -554,6 +559,132 @@ class TestVonaIngest:
         record = dict(self.RECORD, alertLevel="NORMAL", colorCode="GREEN")
 
         assert adapter.parse(json.dumps([record]).encode()) == []
+
+
+class TestCycloneIngest:
+    """NHC advisories and GDACS reports, through the real pipeline."""
+
+    @staticmethod
+    def _gdacs_feature(*, name: str = "ISAIAS-26", lon: float = -87.3, lat: float = 27.7) -> dict:
+        return {
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {
+                "eventtype": "TC",
+                "eventid": 1001334,
+                "episodeid": 12,
+                "eventname": name,
+                "country": "United States",
+                "alertlevel": "Orange",
+                "iscurrent": "true",
+                "fromdate": "2026-10-06T21:00:00",
+                "todate": "2099-01-01T00:00:00",
+                "datemodified": "2026-10-09T15:16:07",
+                "severitydata": {"severity": 194.4, "severityunit": "km/h"},
+            },
+        }
+
+    def _push(self, client, adapter, payload: bytes):
+        runtime = client.app.state.runtime
+        (record,) = adapter.parse(payload)
+        observation = adapter.to_observation(record, "raw/cyclone-test", "sha")
+        runtime.observations.insert(observation)
+        return client.portal.call(runtime.pipeline.handle_observation, observation)
+
+    def _nhc(self, client, **storm):
+        adapter = NhcAdapter(ctx=None, settings=NhcSettings())
+        return self._push(client, adapter, nhc_samples.bundle(**storm))
+
+    def _gdacs(self, client, **feature):
+        adapter = GdacsAdapter(ctx=None, settings=GdacsSettings())
+        payload = json.dumps({"features": [self._gdacs_feature(**feature)]}).encode()
+        return self._push(client, adapter, payload)
+
+    def _frames(self, client, event_id: str) -> list[dict]:
+        response = client.get("/v1/map/frames.geojson", params={"eventId": event_id})
+        return response.json()["features"]
+
+    def test_advisory_becomes_an_official_cyclone_event(self, client):
+        event = self._nhc(client)
+
+        assert event.hazard_type.value == "CYCLONE"
+        assert event.provenance_class.value == "AUTHORITATIVE_NOTICE"
+        assert event.summary.storm_name == "Isaias"
+        assert event.summary.max_wind_kt == 105.0
+
+    def test_map_feed_carries_the_storm_name_wind_and_honest_label(self, client):
+        self._nhc(client)
+
+        features = client.get("/v1/map/events.geojson").json()["features"]
+        (props,) = [f["properties"] for f in features if f["properties"]["hazardType"] == "CYCLONE"]
+
+        assert props["stormName"] == "Isaias"
+        assert props["maxWindKt"] == 105.0
+        assert props["label"] == "Official tropical cyclone advisory"
+
+    def test_geometry_is_served_separately_from_ash_styling(self, client):
+        event = self._nhc(client)
+
+        features = self._frames(client, event.id)
+        types = sorted(f["properties"]["geometryType"] for f in features)
+
+        assert types.count("CYCLONE_CONE") == 1
+        assert types.count("CYCLONE_TRACK") == 1
+        assert types.count("CYCLONE_POSITION") == 2
+        assert types.count("CYCLONE_WIND_RADII") == 2
+        assert {f["properties"]["styleClass"] for f in features} == {"cyclone"}
+
+    def test_a_newer_advisory_replaces_rather_than_stacks_geometry(self, client):
+        event = self._nhc(client, updated="2026-10-09T18:00:00.000Z")
+        before = len(self._frames(client, event.id))
+
+        newer = self._nhc(client, updated="2026-10-09T21:00:00.000Z", lat=29.0)
+
+        assert newer.id == event.id
+        assert len(self._frames(client, event.id)) == before
+
+    def test_gdacs_and_nhc_reports_of_one_storm_are_one_event(self, client):
+        first = self._gdacs(client)
+        fused = self._nhc(client)
+
+        assert fused.id == first.id
+        assert sorted(fused.providers) == ["GDACS", "NHC"]
+        # The agency's own position wins over the re-published one.
+        assert fused.latitude == 28.4
+        assert fused.provenance_class.value == "AUTHORITATIVE_NOTICE"
+
+    def test_fusion_does_not_depend_on_which_agency_reports_first(self, client):
+        first = self._nhc(client)
+        fused = self._gdacs(client)
+
+        assert fused.id == first.id
+        assert fused.latitude == 28.4
+
+    def test_a_differently_named_storm_nearby_stays_separate(self, client):
+        isaias = self._nhc(client)
+        rachel = self._nhc(client, storm_id="al102026", name="Rachel", lon=-87.0, lat=28.8)
+
+        assert rachel.id != isaias.id
+
+    def test_an_unnamed_report_must_be_close_to_merge(self, client):
+        isaias = self._nhc(client)
+        # 200 km away: inside the named radius, outside the unnamed one.
+        other = self._gdacs(client, name="", lon=-87.3, lat=30.2)
+
+        assert other.id != isaias.id
+
+    def test_cyclones_never_generate_alerts(self, client):
+        event = self._nhc(client)
+        area = WatchArea(
+            id="area_1",
+            name="Gulf coast",
+            geometry=circle_geojson(-87.2, 30.0, 300),
+            hazard_types=[HazardType.CYCLONE],
+        )
+
+        send, reasons = should_alert(event, area, None, AlertType.INITIAL, AlertSettings())
+
+        assert send is False
+        assert reasons == ["CYCLONE_ALERTS_NOT_SUPPORTED"]
 
 
 class TestProviderHealth:

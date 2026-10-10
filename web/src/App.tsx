@@ -227,6 +227,7 @@ export function App(): React.JSX.Element {
           showFlights={showFlights}
           showFlightTrails={showFlightTrails}
           showAsh={filters.hazardTypes.includes("ASH")}
+          showCyclone={filters.hazardTypes.includes("CYCLONE")}
           showDayNight={showDayNight}
           showTimezones={showTimezones}
           onFlightsData={setFlights}

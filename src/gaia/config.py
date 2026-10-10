@@ -103,6 +103,14 @@ class VonaSettings(ProviderSettings):
     attribution: str = "U.S. Geological Survey, Volcano Observatory Notice for Aviation (VONA)"
 
 
+class NhcSettings(ProviderSettings):
+    # Atlantic, East and Central Pacific only; GDACS covers the other basins.
+    feed_url: str = "https://www.nhc.noaa.gov/CurrentStorms.json"
+    poll_seconds: float = 600.0
+    stale_after_seconds: float = 3600.0
+    attribution: str = "NOAA National Hurricane Center"
+
+
 class OpenSkySettings(BaseModel):
     # OAuth2 client credentials from https://opensky-network.org/my-opensky/account.
     # Set GAIA_OPENSKY__CLIENT_ID / GAIA_OPENSKY__CLIENT_SECRET. Anonymous access
@@ -119,6 +127,7 @@ class Providers(BaseModel):
     firms: FirmsSettings = FirmsSettings(enabled=False)
     isigmet: IsigmetSettings = IsigmetSettings()
     vona: VonaSettings = VonaSettings()
+    nhc: NhcSettings = NhcSettings()
 
 
 class WebcamSettings(BaseModel):

@@ -1,4 +1,4 @@
-export type HazardType = "EARTHQUAKE" | "VOLCANO" | "ASH" | "WILDFIRE";
+export type HazardType = "EARTHQUAKE" | "VOLCANO" | "ASH" | "WILDFIRE" | "CYCLONE";
 
 export type EventState =
   | "DETECTED"
@@ -55,6 +55,8 @@ export interface EventSummary {
   tsunami: boolean | null;
   detection_count: number | null;
   max_frp_mw: number | null;
+  storm_name: string | null;
+  max_wind_kt: number | null;
 }
 
 export interface SourceRef {
@@ -132,6 +134,8 @@ export interface EventFeatureProperties {
   tsunami: boolean | null;
   detectionCount: number | null;
   maxFrpMw: number | null;
+  stormName: string | null;
+  maxWindKt: number | null;
   originTime: string | null;
   originTimeMs: number | null;
   lastUpdatedAt: string | null;
@@ -144,6 +148,7 @@ export interface EventFeatureProperties {
 export interface FrameFeatureProperties {
   frameId: string;
   eventId: string;
+  geometryType: string;
   frameKind: FrameKind;
   validTime: string;
   validTimeMs: number;
@@ -152,6 +157,12 @@ export interface FrameFeatureProperties {
   upperAltitudeM: number | null;
   source: string;
   styleClass: string;
+  /** Cyclone frames only: when the advisory that produced them was issued. */
+  issuedAtMs?: number;
+  /** Cyclone wind-radii frames: the wind speed the polygon encloses. */
+  windKt?: number;
+  /** Cyclone forecast positions: forecast maximum sustained wind. */
+  maxWindKt?: number;
 }
 
 export interface ArrivalEstimate {

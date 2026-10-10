@@ -15,6 +15,7 @@ class HazardType(StrEnum):
     VOLCANO = "VOLCANO"
     ASH = "ASH"
     WILDFIRE = "WILDFIRE"
+    CYCLONE = "CYCLONE"
 
 
 class EventState(StrEnum):
@@ -83,6 +84,17 @@ HAZARD_PROVENANCE_LABELS: dict[tuple[HazardType, ProvenanceClass], str] = {
     (HazardType.WILDFIRE, ProvenanceClass.MULTISOURCE_RAPID): "Wildfire report",
     (HazardType.WILDFIRE, ProvenanceClass.SINGLE_SOURCE_RAPID): "Preliminary wildfire report",
     (HazardType.WILDFIRE, ProvenanceClass.AUTHORITATIVE_NOTICE): "Official wildfire notice",
+    # A cyclone is a track and a wind field, not a shaking event, so the
+    # earthquake wording must never reach it.
+    (HazardType.CYCLONE, ProvenanceClass.MULTISOURCE_RAPID): "Tropical cyclone report",
+    (
+        HazardType.CYCLONE,
+        ProvenanceClass.SINGLE_SOURCE_RAPID,
+    ): "Preliminary tropical cyclone report",
+    (
+        HazardType.CYCLONE,
+        ProvenanceClass.AUTHORITATIVE_NOTICE,
+    ): "Official tropical cyclone advisory",
 }
 
 # Only an approved authority feed may ever carry an early-warning label. No
@@ -122,6 +134,21 @@ class GeometryType(StrEnum):
     ASH_CLOUD = "ASH_CLOUD"
     IMPACT_ZONE = "IMPACT_ZONE"
     THERMAL_ANOMALY = "THERMAL_ANOMALY"
+    CYCLONE_CONE = "CYCLONE_CONE"
+    CYCLONE_TRACK = "CYCLONE_TRACK"
+    CYCLONE_POSITION = "CYCLONE_POSITION"
+    CYCLONE_WIND_RADII = "CYCLONE_WIND_RADII"
+
+
+# Cyclone geometry is drawn by its own map layers, so the ash layers must skip it.
+CYCLONE_GEOMETRY_TYPES = frozenset(
+    {
+        GeometryType.CYCLONE_CONE,
+        GeometryType.CYCLONE_TRACK,
+        GeometryType.CYCLONE_POSITION,
+        GeometryType.CYCLONE_WIND_RADII,
+    }
+)
 
 
 class Action(StrEnum):

@@ -93,8 +93,8 @@ export function ProvenanceBadge({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       <ProvenanceTag provenanceClass={provenanceClass} label={label} />
-      <span style={{ fontSize: 11 }}>{label}</span>
-      <span style={{ fontSize: 10, color: "var(--fg-faint)" }}>{ago(dataAgeSeconds)}</span>
+      <span style={{ fontSize: 13 }}>{label}</span>
+      <span style={{ fontSize: 12, color: "var(--fg-faint)" }}>{ago(dataAgeSeconds)}</span>
     </div>
   );
 }

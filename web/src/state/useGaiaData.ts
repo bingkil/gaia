@@ -13,7 +13,7 @@ import { type TimeRange, rangeParams } from "./timeRange";
 import type { TimeZonePref } from "./timeZone";
 import { useRealtime } from "./useRealtime";
 
-export const ALL_HAZARD_TYPES: HazardType[] = ["EARTHQUAKE", "VOLCANO", "ASH", "WILDFIRE"];
+export const ALL_HAZARD_TYPES: HazardType[] = ["EARTHQUAKE", "VOLCANO", "ASH", "WILDFIRE", "CYCLONE"];
 
 export interface Filters {
   hazardTypes: HazardType[];

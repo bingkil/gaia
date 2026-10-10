@@ -1,8 +1,8 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { FLAME_PATH, SEVERITY_COLOURS, type Shape, VOLCANO_PATH } from "./severity";
+import { CYCLONE_PATH, FLAME_PATH, SEVERITY_COLOURS, type Shape, VOLCANO_PATH } from "./severity";
 
 const SIZE = 48;
-const SHAPES: Shape[] = ["circle", "volcano", "diamond", "flame"];
+const SHAPES: Shape[] = ["circle", "volcano", "diamond", "flame", "cyclone"];
 
 /** Dart silhouette on a 12x12 box, nose up, so icon-rotate can point it at true track directly. */
 export const AIRCRAFT_PATH = "M6 0 L11.5 10 L6 7.6 L0.5 10 Z";
@@ -36,6 +36,9 @@ function shapePath(shape: Shape, r: number): Path2D {
     case "flame":
       // The silhouette tapers, so it needs more box than a solid shape to read.
       boxed(path, FLAME_PATH, r * 2.3);
+      break;
+    case "cyclone":
+      boxed(path, CYCLONE_PATH, r * 2.4);
       break;
   }
   path.closePath();

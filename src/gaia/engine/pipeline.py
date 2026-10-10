@@ -14,7 +14,7 @@ from datetime import timedelta
 from typing import Any
 
 from ..config import Settings
-from ..db import Database, dumps, loads, to_iso, utcnow
+from ..db import Database, dumps, from_iso, loads, to_iso, utcnow
 from ..domain.enums import (
     AlertType,
     EruptionClassification,
@@ -83,6 +83,14 @@ WILDFIRE_EVENT_WINDOW = timedelta(hours=72)
 # The satellite feed is a signal, not a report, so it cannot corroborate itself.
 FIRE_SIGNAL_PROVIDER = "FIRMS"
 
+# Two agencies describe one storm with positions that differ by an advisory's
+# drift (GDACS lags NHC by tens of km), so matching is by name and a generous
+# radius. With a name missing on either side the radius is much tighter, since
+# two unnamed depressions in one basin are not the same storm.
+CYCLONE_EVENT_WINDOW = timedelta(hours=72)
+CYCLONE_FUSION_RADIUS_KM = 300.0
+CYCLONE_UNNAMED_RADIUS_KM = 100.0
+
 
 class Pipeline:
     def __init__(self, db: Database, settings: Settings, bus: EventBus) -> None:
@@ -137,6 +145,8 @@ class Pipeline:
             return self._process_earthquake(observation)
         if observation.hazard_type == HazardType.WILDFIRE:
             return self._process_wildfire(observation)
+        if observation.hazard_type == HazardType.CYCLONE:
+            return self._process_cyclone(observation)
         return self._process_volcano(observation)
 
     def _process_earthquake(
@@ -423,6 +433,89 @@ class Pipeline:
                 continue
             distance = haversine_km(longitude, latitude, event.longitude, event.latitude)
             if distance <= best_km:
+                best, best_km = event, distance
+        return best
+
+    def _process_cyclone(
+        self, observation: Observation
+    ) -> tuple[HazardEvent, HazardEvent | None, dict[str, Any]] | None:
+        existing = self.events.find_by_source(observation.provider, observation.source_id)
+        if existing is None and observation.longitude is not None:
+            existing = self._open_cyclone_event(
+                observation.longitude,
+                observation.latitude,
+                observation.normalized.get("storm_name"),
+            )
+
+        previous = existing
+        event_id = existing.id if existing else new_id("evt")
+
+        linked = self.observations.for_event(event_id) if existing else []
+        if observation.message_id not in {o.message_id for o in linked}:
+            linked.append(observation)
+
+        event, changes = build_event(event_id, HazardType.CYCLONE, linked, previous)
+        self.events.save(event, changes, DECISION_VERSION)
+        self.events.link(event_id, observation.message_id, 1.0, ["CYCLONE_IDENTITY"])
+
+        # Only an advisory carries geometry, and each one supersedes the last.
+        frames = self._cyclone_frames(event_id, observation)
+        if frames:
+            self.frames.replace_for_event(event_id, frames)
+        return event, previous, changes
+
+    def _cyclone_frames(self, event_id: str, observation: Observation) -> list[GeometryFrame]:
+        frames: list[GeometryFrame] = []
+        for item in observation.normalized.get("frames") or []:
+            valid_time = from_iso(item.get("valid_time"))
+            if valid_time is None:
+                continue
+            frames.append(
+                GeometryFrame(
+                    id=new_id("frame"),
+                    event_id=event_id,
+                    geometry_type=GeometryType(item["geometry_type"]),
+                    frame_kind=FrameKind(item["frame_kind"]),
+                    valid_time=valid_time,
+                    lead_hours=item.get("lead_hours"),
+                    geometry=item["geometry"],
+                    source_provider=observation.provider,
+                    source_ref=observation.source_revision,
+                    properties=item.get("properties") or {},
+                )
+            )
+        return frames
+
+    def _open_cyclone_event(
+        self, longitude: float, latitude: float, name: str | None
+    ) -> HazardEvent | None:
+        """The open storm, if any, that this report is describing."""
+        since = to_iso(utcnow() - CYCLONE_EVENT_WINDOW)
+        rows = self.db.query(
+            """SELECT current_payload FROM hazard_event
+               WHERE hazard_type='CYCLONE' AND state NOT IN ('RETRACTED','ENDED')
+                 AND last_updated_at >= ?
+               ORDER BY last_updated_at DESC""",
+            (since,),
+        )
+
+        best: HazardEvent | None = None
+        best_km = float("inf")
+        for row in rows:
+            event = HazardEvent.model_validate(loads(row["current_payload"], {}))
+            if event.longitude is None or event.latitude is None:
+                continue
+
+            other = event.summary.storm_name
+            if name and other:
+                if name.casefold() != other.casefold():
+                    continue
+                limit = CYCLONE_FUSION_RADIUS_KM
+            else:
+                limit = CYCLONE_UNNAMED_RADIUS_KM
+
+            distance = haversine_km(longitude, latitude, event.longitude, event.latitude)
+            if distance <= limit and distance < best_km:
                 best, best_km = event, distance
         return best
 

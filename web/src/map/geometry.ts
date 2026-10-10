@@ -42,6 +42,10 @@ export function surfaceWaveRadiusKm(
  */
 const MAX_FRAME_AGE_MS = 6 * 3_600_000;
 
+export function isCycloneFrame(props: FrameFeatureProperties): boolean {
+  return typeof props.geometryType === "string" && props.geometryType.startsWith("CYCLONE_");
+}
+
 export function framesAt(
   collection: GeoJSON.FeatureCollection | null,
   timeMs: number,
@@ -53,6 +57,7 @@ export function framesAt(
 
   for (const feature of collection.features) {
     const props = feature.properties as unknown as FrameFeatureProperties;
+    if (isCycloneFrame(props)) continue;
     if (props.validTimeMs > timeMs) continue;
     if (timeMs - props.validTimeMs > MAX_FRAME_AGE_MS) continue;
 
@@ -77,6 +82,27 @@ export function framesAt(
   return { type: "FeatureCollection", features: [...bestByEvent.values()] };
 }
 
+/**
+ * Cyclone track, cone and wind shapes belong to one advisory, so they are shown
+ * together or not at all: from the moment it was issued until a newer one
+ * replaces it. NHC advises at least every six hours, so a set older than this
+ * means the feed went quiet, and it is dropped rather than left implying a
+ * current forecast.
+ */
+const MAX_ADVISORY_AGE_MS = 12 * 3_600_000;
+
+export function cycloneFramesAt(
+  collection: GeoJSON.FeatureCollection | null,
+  timeMs: number,
+): GeoJSON.FeatureCollection {
+  const features = (collection?.features ?? []).filter((feature) => {
+    const props = feature.properties as unknown as FrameFeatureProperties;
+    if (!isCycloneFrame(props) || typeof props.issuedAtMs !== "number") return false;
+    return props.issuedAtMs <= timeMs && timeMs - props.issuedAtMs <= MAX_ADVISORY_AGE_MS;
+  });
+  return { type: "FeatureCollection", features };
+}
+
 /** The next frame after the current time, so the panel can say what is coming. */
 export function nextFrameAfter(
   collection: GeoJSON.FeatureCollection | null,
@@ -87,6 +113,7 @@ export function nextFrameAfter(
   let best: FrameFeatureProperties | null = null;
   for (const feature of collection.features) {
     const props = feature.properties as unknown as FrameFeatureProperties;
+    if (isCycloneFrame(props)) continue;
     if (props.validTimeMs <= timeMs) continue;
     if (best === null || props.validTimeMs < best.validTimeMs) best = props;
   }

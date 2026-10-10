@@ -10,7 +10,7 @@
 </p>
 
 A local-first situational-awareness platform for earthquakes, volcanic eruptions,
-volcanic ash, and satellite-detected wildfires. Everything runs on one machine:
+volcanic ash, satellite-detected wildfires, and tropical cyclones. Everything runs on one machine:
 ingestion, fusion, impact modelling, the map, and alerts. No cloud services, no
 account, no data leaving the device except to query the public feeds listed below.
 
@@ -36,6 +36,11 @@ are not a substitute for instructions from local authorities.
 A satellite hotspot cluster is not a declared wildfire emergency either — it is
 automated detection, labelled and coloured as preliminary until a fire/emergency
 authority's own feed corroborates it.
+
+A tropical cyclone shown here is the issuing agency's forecast, relayed. GAIA ranks a
+storm by its maximum sustained wind alone, which says nothing about surge, rain, or
+flooding. The cone on the map is the likely error in the storm's track, not the area
+that will be damaged. Follow your local authority's instructions.
 
 ## Features
 
@@ -74,6 +79,12 @@ authority's own feed corroborates it.
   source link, matched to nearby events by hazard type and distance, and previewed
   in a modal from the Webcams panel; rows are clickable to pan the map to that
   location.
+- **Tropical cyclones**: active storms from NOAA's National Hurricane Center (Atlantic,
+  East and Central Pacific) and GDACS (every basin), merged into one event per storm.
+  Where NHC publishes them, the map draws the forecast track, the cone of uncertainty,
+  and the current 34/50/64 kt wind extents. A storm is ranked by sustained wind alone,
+  and the cone is labelled as track uncertainty rather than a damage area. Cyclones are
+  shown on the map and list only; GAIA does not send cyclone alerts.
 - **Day/night shading**: an optional map overlay showing the current terminator, with
   a soft civil/nautical/astronomical twilight gradient computed from the sun's
   position — no external tiles required.
@@ -99,6 +110,7 @@ service.
 | GEOFON / GFZ Potsdam | Independent earthquake catalogue | Review GEOFON terms |
 | GDACS | Volcanic events and context | Attribution required; information is indicative |
 | USGS Volcano Hazards Program | VONA volcano alert-level status (US territory) | Public, no key required |
+| NOAA National Hurricane Center | Tropical cyclone advisories, forecast track, cone, and wind radii (Atlantic, East/Central Pacific) | Public, no key required; attribution required |
 | PVMBG / MAGMA Indonesia | Official KRB hazard zone maps, and webcam link-outs for Indonesian volcanoes | Public; attribution required |
 | USGS HVO | Hawaiian volcano webcams | Public; attribution required |
 | NOAA Aviation Weather Center | International SIGMET volcanic ash advisories | Public, no key required |

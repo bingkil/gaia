@@ -36,11 +36,11 @@ export function ProviderHealthPanel({
         <div className="panel-body pad">
           {providers.map((provider) => (
             <div key={provider.provider} style={{ padding: "3px 0" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                 <i className={`dot ${provider.state}`} />
                 <span style={{ flex: 1 }}>{provider.provider}</span>
                 <span
-                  style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)", fontSize: 10 }}
+                  style={{ color: "var(--fg-faint)", fontFamily: "var(--mono)", fontSize: 12 }}
                 >
                   {provider.state === "DISABLED"
                     ? "off"
@@ -49,7 +49,7 @@ export function ProviderHealthPanel({
               </div>
               {provider.lastError ? (
                 <div
-                  style={{ color: "var(--warn)", fontSize: 10, paddingLeft: 16, marginTop: 1 }}
+                  style={{ color: "var(--warn)", fontSize: 12, paddingLeft: 16, marginTop: 1 }}
                 >
                   {provider.lastError}
                 </div>

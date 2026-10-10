@@ -58,6 +58,11 @@ def should_alert(
     if event.hazard_type not in area.hazard_types:
         return False, ["HAZARD_TYPE_NOT_WATCHED"]
 
+    # No cyclone alert wording has been reviewed, and the fallback copy below
+    # describes a volcano. Cyclones are shown on the map and list only.
+    if event.hazard_type == HazardType.CYCLONE:
+        return False, ["CYCLONE_ALERTS_NOT_SUPPORTED"]
+
     # A retraction always reaches anyone who was told about the event.
     if alert_type == AlertType.CANCELLATION:
         return True, ["RETRACTION_ALWAYS_DELIVERED"]

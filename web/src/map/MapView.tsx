@@ -10,9 +10,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import tzlookup from "tz-lookup";
 import type { EventFeatureProperties, SeismicModel, WatchArea } from "../api/types";
-import { ago, coordText, frpText, magnitudeText } from "../components/format";
+import { ago, coordText, cycloneText, frpText, magnitudeText } from "../components/format";
 import { PROVENANCE_MARKS } from "../components/ProvenanceBadge";
-import { circlePolygon, framesAt, surfaceWaveRadiusKm } from "./geometry";
+import { circlePolygon, cycloneFramesAt, framesAt, surfaceWaveRadiusKm } from "./geometry";
 import { computeDayNightBands } from "./dayNight";
 import {
   airlineFromCallsign,
@@ -31,6 +31,7 @@ import {
   LAYER_QUAKE_PULSE,
   LAYER_TIMEZONES_FILL,
   PULSE_WINDOW_SECONDS,
+  SRC_CYCLONES,
   SRC_DAYNIGHT,
   SRC_EVENTS,
   SRC_FLIGHT_TRAILS,
@@ -45,6 +46,7 @@ import {
   addTimezones,
   pulsePaint,
   setAshFramesVisible,
+  setCycloneVisible,
   setData,
   setDayNightVisible,
   setFlightsVisible,
@@ -53,6 +55,7 @@ import {
   setTimezonesVisible,
 } from "./layers";
 import {
+  CYCLONE_PATH,
   FLAME_PATH,
   GLYPH_BY_SHAPE,
   SHAPE_BY_HAZARD,
@@ -117,6 +120,7 @@ interface Props {
   showFlights: boolean;
   showFlightTrails: boolean;
   showAsh: boolean;
+  showCyclone: boolean;
   showDayNight: boolean;
   showTimezones: boolean;
   onFlightsData: (flights: GeoJSON.FeatureCollection) => void;
@@ -152,11 +156,15 @@ function tooltipContent(
   const head = document.createElement("div");
   head.className = "map-tip-head";
 
-  const colour = severityColour(severityOf(props.hazardType, props.magnitude, props.alertLevel));
+  const colour = severityColour(
+    severityOf(props.hazardType, props.magnitude, props.alertLevel, props.maxWindKt),
+  );
   const mark = document.createElement("span");
   mark.className = "map-tip-mark";
   mark.style.color = colour;
-  if (props.hazardType === "WILDFIRE") {
+  if (props.hazardType === "CYCLONE") {
+    mark.append(pathMark(CYCLONE_PATH, colour));
+  } else if (props.hazardType === "WILDFIRE") {
     mark.append(pathMark(FLAME_PATH, colour));
   } else if (props.hazardType === "VOLCANO") {
     mark.append(pathMark(VOLCANO_PATH, colour));
@@ -172,6 +180,7 @@ function tooltipContent(
   // A satellite fire has no name, so its position is the only honest title.
   title.textContent =
     props.volcanoName ??
+    props.stormName ??
     props.place ??
     coordText(coordinates[0], coordinates[1]) ??
     "Unknown region";
@@ -198,7 +207,8 @@ function tooltipContent(
       ? `${props.detectionCount} detections`
       : null,
     fire ? frpText(props.maxFrpMw) : null,
-    props.alertLevel,
+    props.hazardType === "CYCLONE" ? cycloneText(props.maxWindKt) : null,
+    props.hazardType === "CYCLONE" ? null : props.alertLevel,
     ago(props.dataAgeSeconds),
   ]
     .filter(Boolean)
@@ -442,6 +452,7 @@ export function MapView(props: Props): React.JSX.Element {
       setFlightsVisible(map, latest.current.showFlights);
       setFlightTrailsVisible(map, latest.current.showFlights && latest.current.showFlightTrails);
       setAshFramesVisible(map, latest.current.showAsh);
+      setCycloneVisible(map, latest.current.showCyclone);
       setTimezonesVisible(map, latest.current.showTimezones);
       if (latest.current.showDayNight) {
         setDayNightVisible(map, true);
@@ -572,6 +583,7 @@ export function MapView(props: Props): React.JSX.Element {
     let lastTick = 0;
     let waveKey = "";
     let frameKey = "";
+    let cycloneKey = "";
     let pulsing = false;
     const animate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -633,6 +645,15 @@ export function MapView(props: Props): React.JSX.Element {
       if (nextFrameKey !== frameKey) {
         setData(map, SRC_FRAMES, frames);
         frameKey = nextFrameKey;
+      }
+
+      const cyclones = cycloneFramesAt(latest.current.frames, now);
+      const nextCycloneKey = cyclones.features
+        .map((f) => (f.properties as { frameId?: string }).frameId ?? "")
+        .join(",");
+      if (nextCycloneKey !== cycloneKey) {
+        setData(map, SRC_CYCLONES, cyclones);
+        cycloneKey = nextCycloneKey;
       }
     };
     frame = requestAnimationFrame(tick);
@@ -760,6 +781,12 @@ export function MapView(props: Props): React.JSX.Element {
     if (!map || !readyRef.current) return;
     setAshFramesVisible(map, props.showAsh);
   }, [props.showAsh]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    setCycloneVisible(map, props.showCyclone);
+  }, [props.showCyclone]);
 
   useEffect(() => {
     const map = mapRef.current;

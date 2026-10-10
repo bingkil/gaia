@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..db import from_iso, to_iso, utcnow
 from ..domain.enums import (
+    CYCLONE_GEOMETRY_TYPES,
     HAZARD_PROVENANCE_LABELS,
     PROVENANCE_LABELS,
     EventState,
@@ -149,6 +150,7 @@ async def meta(request: Request) -> dict[str, Any]:
             providers.geofon.attribution,
             providers.gdacs.attribution,
             providers.firms.attribution,
+            providers.nhc.attribution,
         ],
         "disclaimer": (
             "GAIA is not an earthquake early warning system. Arrival times are "
@@ -305,6 +307,8 @@ async def map_events(
                     "tsunami": event.summary.tsunami,
                     "detectionCount": event.summary.detection_count,
                     "maxFrpMw": event.summary.max_frp_mw,
+                    "stormName": event.summary.storm_name,
+                    "maxWindKt": event.summary.max_wind_kt,
                     "originTime": to_iso(event.origin_time),
                     "originTimeMs": (
                         event.origin_time.timestamp() * 1000 if event.origin_time else None
@@ -327,7 +331,8 @@ async def map_events(
 
 @router.get("/map/frames.geojson")
 async def map_frames(request: Request, eventId: str | None = None) -> dict[str, Any]:
-    """Time-valid ash geometry. The client selects frames using the map clock."""
+    """Time-valid geometry: ash polygons and cyclone track/cone/wind shapes. The
+    client selects frames using the map clock."""
     runtime = runtime_of(request)
     repo = FrameRepo(runtime.db)
     frames = repo.for_event(eventId) if eventId else repo.all_frames()
@@ -351,7 +356,11 @@ async def map_frames(request: Request, eventId: str | None = None) -> dict[str, 
                     "source": frame.source_provider,
                     "sourceRef": frame.source_ref,
                     "styleClass": (
-                        "ash-observed" if frame.frame_kind.value == "OBSERVED" else "ash-forecast"
+                        "cyclone"
+                        if frame.geometry_type in CYCLONE_GEOMETRY_TYPES
+                        else "ash-observed"
+                        if frame.frame_kind.value == "OBSERVED"
+                        else "ash-forecast"
                     ),
                     **frame.properties,
                 },

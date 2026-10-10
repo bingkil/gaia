@@ -107,8 +107,8 @@ export function WatchAreaPanel({
             key={area.id}
             style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}
           >
-            <span style={{ flex: 1, fontSize: 11 }}>{area.name}</span>
-            <span style={{ fontSize: 10, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>
+            <span style={{ flex: 1, fontSize: 13 }}>{area.name}</span>
+            <span style={{ fontSize: 12, color: "var(--fg-faint)", fontFamily: "var(--mono)" }}>
               {Math.round(area.radius_km)} km · M{area.min_magnitude}
             </span>
             <button

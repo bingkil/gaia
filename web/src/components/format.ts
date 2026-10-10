@@ -5,6 +5,7 @@
  * absolute time is ever rendered without saying which zone it is in.
  */
 
+import { cycloneStep } from "../map/severity";
 import type { TimeZonePref } from "../state/timeZone";
 
 export function utcTime(iso: string | null | undefined): string {
@@ -209,4 +210,13 @@ export function frpText(megawatts: number | null | undefined): string | null {
   return megawatts >= 1000
     ? `${(megawatts / 1000).toFixed(1)} GW peak`
     : `${Math.round(megawatts)} MW peak`;
+}
+
+/**
+ * A storm's wind class and its sustained wind. The class is derived from the
+ * wind figure here, so the wind is always shown beside it.
+ */
+export function cycloneText(maxWindKt: number | null | undefined): string | null {
+  if (typeof maxWindKt !== "number") return null;
+  return `${cycloneStep(maxWindKt).text} · ${Math.round(maxWindKt)} kt`;
 }

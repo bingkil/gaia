@@ -6,9 +6,11 @@ import type {
   Map as MapLibreMap,
   RasterTileSource,
 } from "maplibre-gl";
+import { SEVERITY_COLOURS } from "./severity";
 
 export const SRC_EVENTS = "gaia-events";
 export const SRC_FRAMES = "gaia-frames";
+export const SRC_CYCLONES = "gaia-cyclones";
 export const SRC_WAVEFRONT = "gaia-wavefront";
 export const SRC_WATCH = "gaia-watch";
 export const SRC_AERIAL = "gaia-aerial";
@@ -32,6 +34,15 @@ const ASH_FRAME_LAYERS = [
   "gaia-frames-observed-fill",
   "gaia-frames-observed-line",
 ];
+const CYCLONE_LAYERS = [
+  "gaia-cyclone-radii-fill",
+  "gaia-cyclone-radii-line",
+  "gaia-cyclone-cone-fill",
+  "gaia-cyclone-cone-line",
+  "gaia-cyclone-track-line",
+  "gaia-cyclone-position-dots",
+  "gaia-cyclone-position-labels",
+];
 
 /** How long a quake keeps pulsing. By the end the ring has faded to nothing. */
 export const PULSE_WINDOW_SECONDS = 3600;
@@ -40,6 +51,36 @@ const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: 
 
 const OBSERVED: FilterSpecification = ["==", ["get", "frameKind"], "OBSERVED"];
 const FORECAST: FilterSpecification = ["!=", ["get", "frameKind"], "OBSERVED"];
+
+const cycloneType = (type: string): FilterSpecification => ["==", ["get", "geometryType"], type];
+
+/** Wind-radii polygons nest (34 kt holds 50 holds 64), so stacked fills darken inwards. */
+const WIND_RADIUS_COLOUR: ExpressionSpecification = [
+  "match",
+  ["get", "windKt"],
+  34,
+  "#ffd166",
+  50,
+  "#f78c3a",
+  64,
+  "#e8336d",
+  "#ffd166",
+];
+
+/** Mirrors `cycloneStep` in severity.ts, so a forecast dot matches the marker it will become. */
+const FORECAST_WIND_COLOUR: ExpressionSpecification = [
+  "step",
+  ["coalesce", ["get", "maxWindKt"], 0],
+  SEVERITY_COLOURS[0],
+  34,
+  SEVERITY_COLOURS[1],
+  64,
+  SEVERITY_COLOURS[2],
+  96,
+  SEVERITY_COLOURS[3],
+  113,
+  SEVERITY_COLOURS[4],
+];
 
 const LAYERS: LayerSpecification[] = [
   {
@@ -57,6 +98,89 @@ const LAYERS: LayerSpecification[] = [
       "line-width": 1,
       "line-opacity": 0.5,
       "line-dasharray": [3, 3],
+    },
+  },
+  // Observed and forecast ash are drawn by separate layers so the forecast can
+  // stay dashed and dimmer. They are never given the same visual weight.
+  // Cyclone shapes sit under the ash and the markers. The wind radii are the
+  // agency's estimate of wind NOW; the cone and track are forecast, so they stay
+  // dashed. The cone is only the uncertainty of the track, not where damage falls.
+  {
+    id: "gaia-cyclone-radii-fill",
+    type: "fill",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_WIND_RADII"),
+    paint: { "fill-color": WIND_RADIUS_COLOUR, "fill-opacity": 0.16 },
+  },
+  {
+    id: "gaia-cyclone-radii-line",
+    type: "line",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_WIND_RADII"),
+    paint: { "line-color": WIND_RADIUS_COLOUR, "line-width": 1, "line-opacity": 0.7 },
+  },
+  {
+    id: "gaia-cyclone-cone-fill",
+    type: "fill",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_CONE"),
+    paint: { "fill-color": "#ffffff", "fill-opacity": 0.08 },
+  },
+  {
+    id: "gaia-cyclone-cone-line",
+    type: "line",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_CONE"),
+    paint: {
+      "line-color": "#ffffff",
+      "line-width": 1.2,
+      "line-opacity": 0.55,
+      "line-dasharray": [4, 3],
+    },
+  },
+  {
+    id: "gaia-cyclone-track-line",
+    type: "line",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_TRACK"),
+    paint: {
+      "line-color": "#ffffff",
+      "line-width": 1.8,
+      "line-opacity": 0.9,
+      "line-dasharray": [2, 2],
+    },
+  },
+  {
+    id: "gaia-cyclone-position-dots",
+    type: "circle",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_POSITION"),
+    paint: {
+      "circle-radius": 4.5,
+      "circle-color": FORECAST_WIND_COLOUR,
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 1.2,
+    },
+  },
+  // The basemap style's own labels use this stack, so its glyphs are known to load.
+  {
+    id: "gaia-cyclone-position-labels",
+    type: "symbol",
+    source: SRC_CYCLONES,
+    filter: cycloneType("CYCLONE_POSITION"),
+    layout: {
+      "text-field": ["concat", "+", ["to-string", ["get", "leadHours"]], "h"],
+      "text-font": ["Montserrat Regular"],
+      "text-size": 13,
+      "text-anchor": "bottom",
+      "text-offset": [0, -0.6],
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+    },
+    paint: {
+      "text-color": "#ffffff",
+      "text-halo-color": "rgba(6,10,20,0.9)",
+      "text-halo-width": 1.5,
     },
   },
   // Observed and forecast ash are drawn by separate layers so the forecast can
@@ -184,7 +308,7 @@ const LAYERS: LayerSpecification[] = [
 ];
 
 export function addLayers(map: MapLibreMap): void {
-  for (const id of [SRC_WATCH, SRC_FRAMES, SRC_WAVEFRONT, SRC_EVENTS, SRC_FLIGHTS]) {
+  for (const id of [SRC_WATCH, SRC_FRAMES, SRC_CYCLONES, SRC_WAVEFRONT, SRC_EVENTS, SRC_FLIGHTS]) {
     if (!map.getSource(id)) map.addSource(id, { type: "geojson", data: EMPTY });
   }
   // line-gradient requires per-vertex distance, which only lineMetrics computes.
@@ -208,6 +332,13 @@ export function setFlightTrailsVisible(map: MapLibreMap, visible: boolean): void
 // visibility follows the Ash checkbox, so re-enabling it is instant.
 export function setAshFramesVisible(map: MapLibreMap, visible: boolean): void {
   for (const id of ASH_FRAME_LAYERS) {
+    map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+  }
+}
+
+// Cyclone geometry follows the Cyclone checkbox the same way.
+export function setCycloneVisible(map: MapLibreMap, visible: boolean): void {
+  for (const id of CYCLONE_LAYERS) {
     map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
   }
 }

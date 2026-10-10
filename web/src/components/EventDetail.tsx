@@ -11,7 +11,7 @@ import type { MapClock } from "../map/useMapClock";
 import { useTimeZone } from "../state/timeZone";
 import { ProvenanceBadge } from "./ProvenanceBadge";
 import { WebcamPlayer } from "./WebcamPlayer";
-import { countdown, km, magnitudeText, stampIn, timeIn, utcStamp } from "./format";
+import { countdown, cycloneText, eventTime, km, magnitudeText, stampIn, timeIn, utcStamp } from "./format";
 
 /** Fallback headings. A title must never assert a hazard the event is not. */
 const HAZARD_TITLES: Record<HazardType, string> = {
@@ -19,6 +19,7 @@ const HAZARD_TITLES: Record<HazardType, string> = {
   VOLCANO: "Volcano",
   ASH: "Volcanic ash",
   WILDFIRE: "Wildfire",
+  CYCLONE: "Tropical cyclone",
 };
 
 interface Props {
@@ -77,7 +78,7 @@ function ArrivalPanel({
 
   return (
     <div className="arrival solid" style={{ margin: "0 0 10px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
         <span>Your location</span>
         <span style={{ fontFamily: "var(--mono)" }}>{km(impact.distance_km)}</span>
       </div>
@@ -103,6 +104,46 @@ function ArrivalPanel({
 
       <p className="arrival-note">
         {note} Model {model}.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Current wind and the agency's forecast positions. A time is shown only when
+ * it could be read from the advisory, never filled in from the issue time.
+ */
+function CycloneForecast({ detail }: { detail: EventDetailType }): React.JSX.Element {
+  const { zone } = useTimeZone();
+  const points = detail.frames
+    .filter((frame) => frame.geometry_type === "CYCLONE_POSITION")
+    .sort((a, b) => (a.lead_hours ?? 0) - (b.lead_hours ?? 0));
+
+  return (
+    <div className="arrival solid" style={{ margin: "0 0 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+        <span>Now</span>
+        <span style={{ fontFamily: "var(--mono)" }}>
+          {cycloneText(detail.summary.max_wind_kt) ?? "wind unavailable"}
+        </span>
+      </div>
+
+      {points.map((point) => {
+        const wind = point.properties["maxWindKt"];
+        const timed = typeof point.properties["validTimeMs"] === "number";
+        return (
+          <div className="arrival-row" key={point.id}>
+            <span className="arrival-phase">+{point.lead_hours}h</span>
+            <span className="arrival-window">{timed ? eventTime(zone, point.valid_time) : "—"}</span>
+            <span className="arrival-window">{typeof wind === "number" ? `${wind} kt` : "—"}</span>
+          </div>
+        );
+      })}
+
+      <p className="arrival-note">
+        {points.length > 0 ? "Positions are the issuing agency's forecast. " : ""}
+        The cone on the map shows only the likely error in the storm's track: damaging wind, rain and
+        surge can reach well outside it. Follow local authority instructions.
       </p>
     </div>
   );
@@ -222,7 +263,9 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
   const title =
     detail.hazard_type === "EARTHQUAKE"
       ? `M ${magnitudeText(detail.summary.magnitude)}`
-      : (detail.summary.volcano_name ?? HAZARD_TITLES[detail.hazard_type]);
+      : (detail.summary.volcano_name ??
+        detail.summary.storm_name ??
+        HAZARD_TITLES[detail.hazard_type]);
 
   return (
     <section className="panel glass grow">
@@ -234,8 +277,8 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
       </header>
 
       <div className="panel-body pad">
-        <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600 }}>{title}</h2>
-        <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--fg-dim)" }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 600 }}>{title}</h2>
+        <p style={{ margin: "0 0 10px", fontSize: 14, color: "var(--fg-dim)" }}>
           {detail.summary.place ?? detail.summary.volcano_name ?? "Location unavailable"}
         </p>
 
@@ -255,6 +298,8 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
             </span>
           </div>
         ) : null}
+
+        {detail.hazard_type === "CYCLONE" ? <CycloneForecast detail={detail} /> : null}
 
         {impact ? (
           <ArrivalPanel impact={impact.result} note={impact.note} nowMs={clock.displayMs} />
@@ -419,7 +464,7 @@ export function EventDetail({ eventId, location, clock, onClose }: Props): React
             <div className="panel-title" style={{ margin: "14px 0 6px" }}>
               Why this confidence
             </div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: "var(--fg-dim)" }}>
+            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 13, color: "var(--fg-dim)" }}>
               {detail.confidence_reasons.map((reason) => (
                 <li key={reason}>{reason.replaceAll("_", " ").toLowerCase()}</li>
               ))}

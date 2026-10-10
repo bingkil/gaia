@@ -77,6 +77,9 @@ class EventSummary(BaseModel):
     # Satellite fire clusters only: how many detections, and their peak power.
     detection_count: int | None = None
     max_frp_mw: float | None = None
+    # Tropical cyclones only: the agency's storm name and sustained wind.
+    storm_name: str | None = None
+    max_wind_kt: float | None = None
 
 
 class HazardEvent(BaseModel):
